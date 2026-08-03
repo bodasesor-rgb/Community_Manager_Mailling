@@ -1,10 +1,13 @@
 /**
  * Servidor HTTP mínimo para Hostinger (Node nativo, sin Express/axios).
- * Expone EmailProvider + flujo de creación de envíos.
+ * Integra Brevo + Gemini + Kommo.
  */
 
 import http from "node:http";
-import { BrevoProvider, type EmailProvider } from "./email-provider.js";
+import { BrevoProvider, type EmailProvider, type Remitente } from "./email-provider.js";
+import { generarContenidoEmail } from "./gemini/generar-contenido.js";
+import { KommoClient } from "./kommo/cliente.js";
+import { sincronizarContactoKommo } from "./kommo/sincronizar.js";
 import {
   generarPlantillaHtml,
   type GenerarPlantillaHtmlInput,
@@ -70,7 +73,7 @@ function requiereAuth(
   return false;
 }
 
-function remitenteDesdeEnv(): { nombre: string; email: string } | null {
+function remitenteDesdeEnv(): Remitente | null {
   const email = process.env.REMITENTE_EMAIL ?? process.env.BREVO_TEST_SENDER_EMAIL;
   if (!email) {
     return null;
@@ -78,8 +81,37 @@ function remitenteDesdeEnv(): { nombre: string; email: string } | null {
   const nombre =
     process.env.REMITENTE_NOMBRE ??
     process.env.BREVO_TEST_SENDER_NAME ??
-    "Community Manager";
+    "Bodasesor";
   return { nombre, email };
+}
+
+/** body → env → primer remitente activo de Brevo. */
+async function resolverRemitente(
+  parcial?: { nombre?: string; email?: string },
+): Promise<Remitente | null> {
+  if (parcial?.email) {
+    return {
+      nombre: parcial.nombre ?? "Bodasesor",
+      email: parcial.email,
+    };
+  }
+  const desdeEnv = remitenteDesdeEnv();
+  if (desdeEnv) {
+    return desdeEnv;
+  }
+  const remitentes = await provider.listarRemitentes();
+  const activo = remitentes.find((r) => r.activo) ?? remitentes[0];
+  if (!activo) {
+    return null;
+  }
+  return { nombre: activo.nombre, email: activo.email };
+}
+
+function kommoOpcional(): KommoClient | null {
+  if (!process.env.KOMMO_BASE_URL || !process.env.KOMMO_CLAVE_SECRETA) {
+    return null;
+  }
+  return new KommoClient();
 }
 
 const servidor = http.createServer((req, res) => {
@@ -93,6 +125,13 @@ const servidor = http.createServer((req, res) => {
           ok: true,
           servicio: "Community Manager Mailling",
           provider: "brevo",
+          integraciones: {
+            brevo: Boolean(process.env.BREVO_API_KEY),
+            gemini: Boolean(process.env.GEMINI_API_KEY),
+            kommo: Boolean(
+              process.env.KOMMO_BASE_URL && process.env.KOMMO_CLAVE_SECRETA,
+            ),
+          },
           authRequerida: Boolean(serviceApiKey),
         });
         return;
@@ -100,7 +139,21 @@ const servidor = http.createServer((req, res) => {
 
       if (method === "GET" && path === "/conexion") {
         const ok = await provider.verificarConexion();
-        enviarJson(res, 200, { ok });
+        const kommo = kommoOpcional();
+        let kommoOk: boolean | null = null;
+        if (kommo) {
+          try {
+            kommoOk = await kommo.verificarConexion();
+          } catch {
+            kommoOk = false;
+          }
+        }
+        enviarJson(res, 200, {
+          ok,
+          brevo: ok,
+          kommo: kommoOk,
+          gemini: Boolean(process.env.GEMINI_API_KEY),
+        });
         return;
       }
 
@@ -143,7 +196,35 @@ const servidor = http.createServer((req, res) => {
         return;
       }
 
-      /** Vista previa: genera HTML sin tocar Brevo. */
+      // ---- Gemini ----
+      if (method === "POST" && path === "/contenido/generar") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          brief?: string;
+          marca?: string;
+          tono?: string;
+          idioma?: string;
+        };
+        if (!body.brief) {
+          enviarJson(res, 400, { error: "brief es requerido" });
+          return;
+        }
+        const generado = await generarContenidoEmail({
+          brief: body.brief,
+          ...(body.marca !== undefined ? { marca: body.marca } : {}),
+          ...(body.tono !== undefined ? { tono: body.tono } : {}),
+          ...(body.idioma !== undefined ? { idioma: body.idioma } : {}),
+        });
+        const htmlContent = generarPlantillaHtml(generado.contenido);
+        enviarJson(res, 200, {
+          asunto: generado.asunto,
+          contenido: generado.contenido,
+          htmlContent,
+        });
+        return;
+      }
+
+      /** Vista previa determinista (sin Gemini ni Brevo). */
       if (method === "POST" && path === "/plantillas/vista-previa") {
         const body = (await leerJson(req)) as Partial<GenerarPlantillaHtmlInput>;
         if (!body.marca || !body.titular) {
@@ -172,16 +253,11 @@ const servidor = http.createServer((req, res) => {
           htmlContent?: string;
           remitente?: { nombre?: string; email?: string };
         };
-        if (
-          !body.nombre ||
-          !body.asunto ||
-          !body.htmlContent ||
-          !body.remitente?.nombre ||
-          !body.remitente?.email
-        ) {
+        const remitente = await resolverRemitente(body.remitente);
+        if (!body.nombre || !body.asunto || !body.htmlContent || !remitente) {
           enviarJson(res, 400, {
             error:
-              "nombre, asunto, htmlContent y remitente.{nombre,email} son requeridos",
+              "nombre, asunto, htmlContent y remitente (o remitente Brevo activo) son requeridos",
           });
           return;
         }
@@ -189,60 +265,69 @@ const servidor = http.createServer((req, res) => {
           nombre: body.nombre,
           asunto: body.asunto,
           htmlContent: body.htmlContent,
-          remitente: {
-            nombre: body.remitente.nombre,
-            email: body.remitente.email,
-          },
+          remitente,
         });
         enviarJson(res, 201, resultado);
         return;
       }
 
       /**
-       * Flujo de creación recomendado:
-       * genera HTML → crea plantilla; opcionalmente campaña en borrador.
-       * Default modo=plantilla (no crea campaña).
+       * Flujo completo:
+       * - con brief → Gemini genera contenido
+       * - o con contenido estructurado
+       * → HTML → plantilla Brevo (modo plantilla por defecto)
        */
       if (method === "POST" && path === "/envios") {
         if (!requiereAuth(req, res)) return;
         const body = (await leerJson(req)) as {
           nombre?: string;
           asunto?: string;
+          brief?: string;
           remitente?: { nombre?: string; email?: string };
           contenido?: GenerarPlantillaHtmlInput;
           modo?: ModoEnvio;
           listIds?: number[];
           scheduledAt?: string;
+          marca?: string;
+          tono?: string;
         };
 
-        const remitenteEnv = remitenteDesdeEnv();
-        const remitente = body.remitente?.email
-          ? {
-              nombre: body.remitente.nombre ?? "Community Manager",
-              email: body.remitente.email,
-            }
-          : remitenteEnv;
-
-        if (!body.nombre || !body.asunto || !body.contenido || !remitente) {
+        const remitente = await resolverRemitente(body.remitente);
+        if (!remitente) {
           enviarJson(res, 400, {
-            error:
-              "nombre, asunto, contenido y remitente (o REMITENTE_EMAIL) son requeridos",
+            error: "No hay remitente: define REMITENTE_EMAIL o un sender en Brevo",
           });
           return;
         }
 
-        if (!body.contenido.marca || !body.contenido.titular) {
+        let asunto = body.asunto;
+        let contenido = body.contenido;
+
+        if (!contenido && body.brief) {
+          const generado = await generarContenidoEmail({
+            brief: body.brief,
+            ...(body.marca !== undefined ? { marca: body.marca } : {}),
+            ...(body.tono !== undefined ? { tono: body.tono } : {}),
+          });
+          asunto = asunto ?? generado.asunto;
+          contenido = generado.contenido;
+        }
+
+        const nombre =
+          body.nombre ?? `Envio ${new Date().toISOString()}`;
+
+        if (!asunto || !contenido) {
           enviarJson(res, 400, {
-            error: "contenido.marca y contenido.titular son requeridos",
+            error: "Se requiere contenido o brief (+ asunto si no usas Gemini)",
           });
           return;
         }
 
         const input: CrearEnvioInput = {
-          nombre: body.nombre,
-          asunto: body.asunto,
+          nombre,
+          asunto,
           remitente,
-          contenido: body.contenido,
+          contenido,
           ...(body.modo !== undefined ? { modo: body.modo } : {}),
           ...(body.listIds !== undefined ? { listIds: body.listIds } : {}),
           ...(body.scheduledAt !== undefined
@@ -255,8 +340,7 @@ const servidor = http.createServer((req, res) => {
           modo: resultado.modo,
           plantillaId: resultado.plantilla.id,
           campanaId: resultado.campana?.id ?? null,
-          // No devolvemos el HTML completo en prod para no inflar logs;
-          // usa /plantillas/vista-previa si lo necesitas.
+          asunto,
           htmlLength: resultado.htmlContent.length,
         });
         return;
@@ -273,18 +357,10 @@ const servidor = http.createServer((req, res) => {
           listIds?: number[];
           scheduledAt?: string;
         };
-        const remitenteEnv = remitenteDesdeEnv();
-        const remitente = body.remitente?.email
-          ? {
-              nombre: body.remitente.nombre ?? "Community Manager",
-              email: body.remitente.email,
-            }
-          : remitenteEnv;
-
+        const remitente = await resolverRemitente(body.remitente);
         if (!body.nombre || !body.asunto || !remitente || !body.listIds?.length) {
           enviarJson(res, 400, {
-            error:
-              "nombre, asunto, listIds y remitente (o REMITENTE_EMAIL) son requeridos",
+            error: "nombre, asunto, listIds y remitente son requeridos",
           });
           return;
         }
@@ -305,6 +381,86 @@ const servidor = http.createServer((req, res) => {
             : {}),
         });
         enviarJson(res, 201, resultado);
+        return;
+      }
+
+      // ---- Kommo ----
+      if (method === "GET" && path === "/kommo/contactos") {
+        if (!requiereAuth(req, res)) return;
+        const kommo = kommoOpcional();
+        if (!kommo) {
+          enviarJson(res, 503, {
+            error: "Kommo no configurado (KOMMO_BASE_URL / KOMMO_CLAVE_SECRETA)",
+          });
+          return;
+        }
+        const contactos = await kommo.listarContactos({ limit: 50, page: 1 });
+        enviarJson(res, 200, { total: contactos.length, contactos });
+        return;
+      }
+
+      if (method === "POST" && path === "/kommo/sincronizar") {
+        if (!requiereAuth(req, res)) return;
+        const kommo = kommoOpcional();
+        if (!kommo) {
+          enviarJson(res, 503, {
+            error: "Kommo no configurado (KOMMO_BASE_URL / KOMMO_CLAVE_SECRETA)",
+          });
+          return;
+        }
+        const body = (await leerJson(req)) as {
+          kommoId?: number;
+          listIds?: number[];
+        };
+        if (!body.kommoId) {
+          enviarJson(res, 400, { error: "kommoId es requerido" });
+          return;
+        }
+        const resultado = await sincronizarContactoKommo(
+          kommo,
+          provider,
+          body.kommoId,
+          body.listIds,
+        );
+        enviarJson(res, resultado.sincronizado ? 200 : 409, resultado);
+        return;
+      }
+
+      /**
+       * Webhook genérico de Kommo.
+       * Acepta { contact_id } o payloads con _embedded.contacts[0].id
+       */
+      if (method === "POST" && path === "/webhooks/kommo") {
+        const kommo = kommoOpcional();
+        if (!kommo) {
+          enviarJson(res, 503, { error: "Kommo no configurado" });
+          return;
+        }
+        const body = (await leerJson(req)) as {
+          contact_id?: number;
+          kommoId?: number;
+          listIds?: number[];
+          _embedded?: { contacts?: Array<{ id?: number }> };
+        };
+
+        const kommoId =
+          body.kommoId ??
+          body.contact_id ??
+          body._embedded?.contacts?.[0]?.id;
+
+        if (!kommoId) {
+          enviarJson(res, 400, { error: "No se encontró contact_id en el webhook" });
+          return;
+        }
+
+        const listIds = body.listIds ?? parseListIdsEnv();
+        const resultado = await sincronizarContactoKommo(
+          kommo,
+          provider,
+          kommoId,
+          listIds,
+        );
+        enviarJson(res, 200, resultado);
         return;
       }
 
@@ -343,6 +499,18 @@ const servidor = http.createServer((req, res) => {
     }
   })();
 });
+
+function parseListIdsEnv(): number[] | undefined {
+  const raw = process.env.BREVO_DEFAULT_LIST_IDS;
+  if (!raw) {
+    return undefined;
+  }
+  const ids = raw
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return ids.length > 0 ? ids : undefined;
+}
 
 servidor.listen(puerto, () => {
   console.log(`Servidor escuchando en puerto ${puerto}`);

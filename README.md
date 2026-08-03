@@ -1,32 +1,41 @@
 # Community Manager Mailling
 
-Microservicio de email marketing en Node.js + TypeScript.
-La app habla solo con `EmailProvider`; Brevo vive en `BrevoProvider`.
+Microservicio Node.js + TypeScript en Hostinger.
+Integra **Brevo** (envío), **Gemini** (copy) y **Kommo** (contactos).
 
-## Requisitos
+## Variables de entorno
 
-- Node.js 18+
-- `BREVO_API_KEY`
-- `REMITENTE_EMAIL` (remitente verificado en Brevo) para crear plantillas/envíos
+| Clave | Uso |
+|---|---|
+| `BREVO_API_KEY` | API Brevo |
+| `GEMINI_API_KEY` | Generación de contenido |
+| `KOMMO_BASE_URL` | Ej. `https://tu-cuenta.kommo.com` |
+| `KOMMO_CLAVE_SECRETA` | Token Bearer de Kommo |
+| `REMITENTE_EMAIL` | Opcional (si no, usa sender activo de Brevo) |
+| `BREVO_DEFAULT_LIST_IDS` | Listas default para webhook Kommo (ej. `21`) |
 
-## Scripts
+## Endpoints útiles
 
 ```bash
-npm install
-npm run typecheck
-npm run build
-npm start                 # HTTP en PORT (Hostinger)
-npm run probar-envio      # Generador + plantilla (sin campaña)
+GET  /health
+GET  /conexion
+GET  /remitentes
+POST /contenido/generar          # Gemini → asunto + HTML
+POST /envios                     # brief|contenido → plantilla Brevo
+GET  /kommo/contactos
+POST /kommo/sincronizar          # { kommoId, listIds? }
+POST /webhooks/kommo             # sync desde Kommo
 ```
 
-## Flujo de creación
+## Creación rápida (Hostinger)
 
-1. `POST /plantillas/vista-previa` — genera HTML (sin Brevo)
-2. `POST /envios` con `modo: "plantilla"` — sube plantilla a Brevo
-3. `POST /envios` con `modo: "borrador"` + `listIds` — plantilla + campaña borrador (no envía)
+```bash
+curl -X POST https://TU-DOMINIO/envios \
+  -H 'content-type: application/json' \
+  -d '{
+    "brief": "Tips de content para wedding planners esta semana",
+    "modo": "plantilla"
+  }'
+```
 
-## Hostinger
-
-- Build: `npm run build`
-- Entry: `dist/src/server.js`
-- Env: `BREVO_API_KEY`, `REMITENTE_EMAIL`, opcional `SERVICE_API_KEY`
+`modo: "plantilla"` no crea campaña. `modo: "borrador"` + `listIds` crea borrador sin enviar.

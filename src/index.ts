@@ -33,3 +33,15 @@ export {
   type CrearEnvioResultado,
   type ModoEnvio,
 } from "./servicios/crear-envio.js";
+
+export { KommoClient, type KommoContacto } from "./kommo/cliente.js";
+export {
+  sincronizarContactoKommo,
+  type SyncKommoResultado,
+} from "./kommo/sincronizar.js";
+
+export {
+  generarContenidoEmail,
+  type GenerarContenidoInput,
+  type ContenidoGenerado,
+} from "./gemini/generar-contenido.js";
