@@ -4,8 +4,16 @@
  */
 
 import http from "node:http";
+import { promises as fs } from "node:fs";
 import { BrevoProvider, type EmailProvider, type Remitente } from "./email-provider.js";
-import { generarContenidoEmail } from "./gemini/generar-contenido.js";
+import {
+  generarContenidoEmail,
+  listarModelosGemini,
+} from "./gemini/generar-contenido.js";
+import {
+  generarImagenEmail,
+  rutaMediaSegura,
+} from "./gemini/generar-imagen.js";
 import { KommoClient } from "./kommo/cliente.js";
 import { sincronizarContactoKommo } from "./kommo/sincronizar.js";
 import {
@@ -114,6 +122,20 @@ function kommoOpcional(): KommoClient | null {
   return new KommoClient();
 }
 
+/** Base pública del request (Hostinger) para URLs de imágenes en emails. */
+function baseUrlDesdeRequest(req: http.IncomingMessage): string {
+  if (process.env.PUBLIC_BASE_URL) {
+    return process.env.PUBLIC_BASE_URL.replace(/\/+$/, "");
+  }
+  const host =
+    (req.headers["x-forwarded-host"] as string | undefined) ??
+    req.headers.host ??
+    "localhost";
+  const proto =
+    (req.headers["x-forwarded-proto"] as string | undefined) ?? "https";
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
 const servidor = http.createServer((req, res) => {
   void (async () => {
     const method = req.method ?? "GET";
@@ -125,6 +147,10 @@ const servidor = http.createServer((req, res) => {
           ok: true,
           servicio: "Community Manager Mailling",
           provider: "brevo",
+          modelos: {
+            texto: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+            imagen: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
+          },
           integraciones: {
             brevo: Boolean(process.env.BREVO_API_KEY),
             gemini: Boolean(process.env.GEMINI_API_KEY),
@@ -133,6 +159,44 @@ const servidor = http.createServer((req, res) => {
             ),
           },
           authRequerida: Boolean(serviceApiKey),
+        });
+        return;
+      }
+
+      /** Sirve imágenes generadas por Imagen 3. */
+      if (method === "GET" && path.startsWith("/media/")) {
+        const nombre = path.slice("/media/".length);
+        const archivo = rutaMediaSegura(nombre);
+        if (!archivo) {
+          enviarJson(res, 400, { error: "nombre de media inválido" });
+          return;
+        }
+        try {
+          const bytes = await fs.readFile(archivo);
+          const mime = nombre.endsWith(".jpg") || nombre.endsWith(".jpeg")
+            ? "image/jpeg"
+            : "image/png";
+          res.writeHead(200, {
+            "content-type": mime,
+            "content-length": bytes.length,
+            "cache-control": "public, max-age=86400",
+          });
+          res.end(bytes);
+        } catch {
+          enviarJson(res, 404, { error: "media no encontrada" });
+        }
+        return;
+      }
+
+      if (method === "GET" && path === "/gemini/modelos") {
+        const modelos = await listarModelosGemini();
+        enviarJson(res, 200, {
+          total: modelos.length,
+          textoPreferido: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+          imagenPreferida: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
+          flash20: modelos.filter((m) => m.includes("2.0-flash")),
+          imagen: modelos.filter((m) => m.includes("imagen")),
+          modelos,
         });
         return;
       }
@@ -200,7 +264,7 @@ const servidor = http.createServer((req, res) => {
         return;
       }
 
-      // ---- Gemini ----
+      // ---- Gemini Flash 2.0 + Imagen 3 ----
       if (method === "POST" && path === "/contenido/generar") {
         if (!requiereAuth(req, res)) return;
         const body = (await leerJson(req)) as {
@@ -208,6 +272,7 @@ const servidor = http.createServer((req, res) => {
           marca?: string;
           tono?: string;
           idioma?: string;
+          generarImagen?: boolean;
         };
         if (!body.brief) {
           enviarJson(res, 400, { error: "brief es requerido" });
@@ -215,15 +280,54 @@ const servidor = http.createServer((req, res) => {
         }
         const generado = await generarContenidoEmail({
           brief: body.brief,
+          baseUrl: baseUrlDesdeRequest(req),
           ...(body.marca !== undefined ? { marca: body.marca } : {}),
           ...(body.tono !== undefined ? { tono: body.tono } : {}),
           ...(body.idioma !== undefined ? { idioma: body.idioma } : {}),
+          ...(body.generarImagen !== undefined
+            ? { generarImagen: body.generarImagen }
+            : {}),
         });
         const htmlContent = generarPlantillaHtml(generado.contenido);
         enviarJson(res, 200, {
           asunto: generado.asunto,
+          modeloTexto: generado.modeloTexto,
+          imagePrompt: generado.imagePrompt ?? null,
+          imagen: generado.imagen
+            ? {
+                id: generado.imagen.id,
+                url: generado.imagen.urlPublica,
+                modelo: generado.imagen.modelo,
+              }
+            : null,
           contenido: generado.contenido,
           htmlContent,
+        });
+        return;
+      }
+
+      if (method === "POST" && path === "/imagenes/generar") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          prompt?: string;
+          aspectRatio?: "1:1" | "3:4" | "4:3" | "16:9" | "9:16";
+        };
+        if (!body.prompt) {
+          enviarJson(res, 400, { error: "prompt es requerido" });
+          return;
+        }
+        const imagen = await generarImagenEmail({
+          prompt: body.prompt,
+          baseUrl: baseUrlDesdeRequest(req),
+          ...(body.aspectRatio !== undefined
+            ? { aspectRatio: body.aspectRatio }
+            : {}),
+        });
+        enviarJson(res, 201, {
+          id: imagen.id,
+          url: imagen.urlPublica,
+          mimeType: imagen.mimeType,
+          modelo: imagen.modelo,
         });
         return;
       }
@@ -294,6 +398,7 @@ const servidor = http.createServer((req, res) => {
           scheduledAt?: string;
           marca?: string;
           tono?: string;
+          generarImagen?: boolean;
         };
 
         const remitente = await resolverRemitente(body.remitente);
@@ -306,15 +411,23 @@ const servidor = http.createServer((req, res) => {
 
         let asunto = body.asunto;
         let contenido = body.contenido;
+        let modeloTexto: string | null = null;
+        let imagenUrl: string | null = null;
 
         if (!contenido && body.brief) {
           const generado = await generarContenidoEmail({
             brief: body.brief,
+            baseUrl: baseUrlDesdeRequest(req),
             ...(body.marca !== undefined ? { marca: body.marca } : {}),
             ...(body.tono !== undefined ? { tono: body.tono } : {}),
+            ...(body.generarImagen !== undefined
+              ? { generarImagen: body.generarImagen }
+              : {}),
           });
           asunto = asunto ?? generado.asunto;
           contenido = generado.contenido;
+          modeloTexto = generado.modeloTexto;
+          imagenUrl = generado.imagen?.urlPublica ?? null;
         }
 
         const nombre =
@@ -345,6 +458,8 @@ const servidor = http.createServer((req, res) => {
           plantillaId: resultado.plantilla.id,
           campanaId: resultado.campana?.id ?? null,
           asunto,
+          modeloTexto,
+          imagenUrl,
           htmlLength: resultado.htmlContent.length,
         });
         return;

@@ -8,7 +8,10 @@ Integra **Brevo** (envío), **Gemini** (copy) y **Kommo** (contactos).
 | Clave | Uso |
 |---|---|
 | `BREVO_API_KEY` | API Brevo |
-| `GEMINI_API_KEY` | Generación de contenido |
+| `GEMINI_API_KEY` | Generación de copy (Flash 2.0) + Imagen 3 |
+| `GEMINI_MODEL` | Default `gemini-2.0-flash` |
+| `IMAGEN_MODEL` | Default `imagen-3.0-generate-002` |
+| `PUBLIC_BASE_URL` | URL pública Hostinger para `/media` |
 | `KOMMO_BASE_URL` | Ej. `https://tu-cuenta.kommo.com` |
 | `KOMMO_CLAVE_SECRETA` | Token Bearer de Kommo |
 | `REMITENTE_EMAIL` | Opcional (si no, usa sender activo de Brevo) |
@@ -20,8 +23,11 @@ Integra **Brevo** (envío), **Gemini** (copy) y **Kommo** (contactos).
 GET  /health
 GET  /conexion
 GET  /remitentes
-POST /contenido/generar          # Gemini → asunto + HTML
-POST /envios                     # brief|contenido → plantilla Brevo
+GET  /gemini/modelos
+POST /contenido/generar          # Flash 2.0 + Imagen 3 → HTML
+POST /imagenes/generar           # Solo Imagen 3
+GET  /media/:archivo             # Sirve imágenes del email
+POST /envios                     # brief → plantilla Brevo (con imagen)
 GET  /kommo/contactos
 POST /kommo/sincronizar          # { kommoId, listIds? }
 POST /webhooks/kommo             # sync desde Kommo

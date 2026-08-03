@@ -42,6 +42,14 @@ export {
 
 export {
   generarContenidoEmail,
+  listarModelosGemini,
   type GenerarContenidoInput,
   type ContenidoGenerado,
 } from "./gemini/generar-contenido.js";
+
+export {
+  generarImagenEmail,
+  rutaMediaSegura,
+  type GenerarImagenInput,
+  type ImagenGenerada,
+} from "./gemini/generar-imagen.js";
