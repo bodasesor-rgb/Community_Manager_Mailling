@@ -1,6 +1,7 @@
 /**
- * Generación de imágenes con Imagen 3 (Gemini API).
- * Modelo: imagen-3.0-generate-002
+ * Generación de imágenes para emails vía Gemini API.
+ * Preferencia: Imagen 3 (`imagen-3.0-generate-002`).
+ * Fallback: Imagen 4 si Google ya no expone Imagen 3 en la cuenta.
  */
 
 import { promises as fs } from "node:fs";
@@ -35,7 +36,18 @@ interface ImagenPredictResponse {
   error?: { message?: string };
 }
 
-const MODELO_IMAGEN = process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002";
+function modelosImagen(): string[] {
+  const preferido = process.env.IMAGEN_MODEL?.trim() || "imagen-3.0-generate-002";
+  return [
+    ...new Set([
+      preferido,
+      "imagen-3.0-generate-002",
+      "imagen-3.0-generate-001",
+      "imagen-4.0-generate-001",
+      "imagen-4.0-fast-generate-001",
+    ]),
+  ];
+}
 
 function mediaDir(): string {
   return process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "media");
@@ -50,7 +62,7 @@ function basePublica(): string {
 }
 
 /**
- * Genera una imagen con Imagen 3, la guarda en disco y devuelve URL pública.
+ * Genera una imagen, la guarda en disco y devuelve URL pública.
  */
 export async function generarImagenEmail(
   input: GenerarImagenInput,
@@ -60,54 +72,62 @@ export async function generarImagenEmail(
     throw new Error("GEMINI_API_KEY no configurada");
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODELO_IMAGEN}:predict?key=${encodeURIComponent(apiKey)}`;
+  let ultimoError = "Imagen no respondió";
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      instances: [{ prompt: input.prompt }],
-      parameters: {
-        sampleCount: 1,
-        aspectRatio: input.aspectRatio ?? "16:9",
-        personGeneration: "allow_adult",
-      },
-    }),
-  });
+  for (const modelo of modelosImagen()) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:predict?key=${encodeURIComponent(apiKey)}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        instances: [{ prompt: input.prompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: input.aspectRatio ?? "16:9",
+          personGeneration: "allow_adult",
+        },
+      }),
+    });
 
-  const data = (await response.json()) as ImagenPredictResponse;
-  if (!response.ok) {
-    throw new Error(
-      `Imagen ${MODELO_IMAGEN} falló (${response.status}): ${data.error?.message ?? JSON.stringify(data)}`,
-    );
+    const data = (await response.json()) as ImagenPredictResponse;
+    if (!response.ok) {
+      ultimoError = `Imagen ${modelo} (${response.status}): ${data.error?.message ?? JSON.stringify(data)}`;
+      if (response.status === 404) {
+        continue;
+      }
+      throw new Error(ultimoError);
+    }
+
+    const pred = data.predictions?.[0];
+    if (!pred?.bytesBase64Encoded) {
+      ultimoError = `Imagen ${modelo}: ${pred?.raiFilteredReason ?? "sin bytes de imagen"}`;
+      continue;
+    }
+
+    const mimeType = pred.mimeType ?? "image/png";
+    const ext =
+      mimeType.includes("jpeg") || mimeType.includes("jpg") ? "jpg" : "png";
+    const id = randomUUID();
+    const dir = mediaDir();
+    await fs.mkdir(dir, { recursive: true });
+    const archivo = path.join(dir, `${id}.${ext}`);
+    await fs.writeFile(archivo, Buffer.from(pred.bytesBase64Encoded, "base64"));
+
+    const base = (input.baseUrl ?? basePublica()).replace(/\/+$/, "");
+    const urlPublica = base
+      ? `${base}/media/${id}.${ext}`
+      : `/media/${id}.${ext}`;
+
+    return {
+      id,
+      mimeType,
+      archivo,
+      urlPublica,
+      modelo,
+    };
   }
 
-  const pred = data.predictions?.[0];
-  if (!pred?.bytesBase64Encoded) {
-    const razon = pred?.raiFilteredReason ?? "sin bytes de imagen";
-    throw new Error(`Imagen 3 no devolvió imagen: ${razon}`);
-  }
-
-  const mimeType = pred.mimeType ?? "image/png";
-  const ext = mimeType.includes("jpeg") || mimeType.includes("jpg") ? "jpg" : "png";
-  const id = randomUUID();
-  const dir = mediaDir();
-  await fs.mkdir(dir, { recursive: true });
-  const archivo = path.join(dir, `${id}.${ext}`);
-  await fs.writeFile(archivo, Buffer.from(pred.bytesBase64Encoded, "base64"));
-
-  const base = (input.baseUrl ?? basePublica()).replace(/\/+$/, "");
-  const urlPublica = base
-    ? `${base}/media/${id}.${ext}`
-    : `/media/${id}.${ext}`;
-
-  return {
-    id,
-    mimeType,
-    archivo,
-    urlPublica,
-    modelo: MODELO_IMAGEN,
-  };
+  throw new Error(ultimoError);
 }
 
 /** Resuelve un archivo de media por nombre (solo basename seguro). */

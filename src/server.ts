@@ -190,13 +190,17 @@ const servidor = http.createServer((req, res) => {
 
       if (method === "GET" && path === "/gemini/modelos") {
         const modelos = await listarModelosGemini();
+        const nombres = modelos.map((m) => m.name);
         enviarJson(res, 200, {
           total: modelos.length,
           textoPreferido: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
           imagenPreferida: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
-          flash20: modelos.filter((m) => m.includes("2.0-flash")),
-          imagen: modelos.filter((m) => m.includes("imagen")),
-          modelos,
+          flash20: modelos.filter((m) => m.name.includes("2.0-flash")),
+          imagen: modelos.filter((m) => m.name.includes("imagen")),
+          modelos: nombres,
+          detalle: modelos.filter(
+            (m) => m.name.includes("2.0-flash") || m.name.includes("imagen"),
+          ),
         });
         return;
       }
@@ -292,6 +296,7 @@ const servidor = http.createServer((req, res) => {
         enviarJson(res, 200, {
           asunto: generado.asunto,
           modeloTexto: generado.modeloTexto,
+          advertencia: generado.advertencia ?? null,
           imagePrompt: generado.imagePrompt ?? null,
           imagen: generado.imagen
             ? {
@@ -413,6 +418,8 @@ const servidor = http.createServer((req, res) => {
         let contenido = body.contenido;
         let modeloTexto: string | null = null;
         let imagenUrl: string | null = null;
+        let imagenModelo: string | null = null;
+        let advertencia: string | null = null;
 
         if (!contenido && body.brief) {
           const generado = await generarContenidoEmail({
@@ -428,6 +435,8 @@ const servidor = http.createServer((req, res) => {
           contenido = generado.contenido;
           modeloTexto = generado.modeloTexto;
           imagenUrl = generado.imagen?.urlPublica ?? null;
+          imagenModelo = generado.imagen?.modelo ?? null;
+          advertencia = generado.advertencia ?? null;
         }
 
         const nombre =
@@ -460,6 +469,8 @@ const servidor = http.createServer((req, res) => {
           asunto,
           modeloTexto,
           imagenUrl,
+          imagenModelo,
+          advertencia,
           htmlLength: resultado.htmlContent.length,
         });
         return;

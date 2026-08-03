@@ -1,36 +1,29 @@
 /**
- * Generación de contenido de email con Gemini Flash 2.0.
- * Las imágenes se generan aparte con Imagen 3.
- * Vive FUERA de email-provider: Brevo solo recibe HTML listo.
+ * Generación de contenido de email con Gemini Flash 2.0 (+ fallback si Google lo bloquea).
+ * Imágenes: Imagen 3 (con fallback a Imagen 4).
  */
 
 import type { GenerarPlantillaHtmlInput } from "../plantillas/generador.js";
 import { generarImagenEmail, type ImagenGenerada } from "./generar-imagen.js";
 
 export interface GenerarContenidoInput {
-  /** Tema o brief del correo. */
   brief: string;
-  /** Marca / producto. */
   marca?: string;
-  /** Tono opcional (cercano, formal, etc.). */
   tono?: string;
-  /** Idioma de salida. */
   idioma?: string;
-  /** Si true, genera una imagen hero con Imagen 3 e la inserta. */
+  /** Default true: genera hero con Imagen. */
   generarImagen?: boolean;
-  /** Base pública para URLs de /media en el HTML. */
   baseUrl?: string;
 }
 
 export interface ContenidoGenerado {
   asunto: string;
   contenido: GenerarPlantillaHtmlInput;
-  /** Modelo de texto usado. */
   modeloTexto: string;
-  /** Imagen generada (si se pidió). */
   imagen?: ImagenGenerada;
-  /** Prompt visual usado con Imagen 3. */
   imagePrompt?: string;
+  /** Aviso si no se pudo usar exactamente Flash 2.0 / Imagen 3. */
+  advertencia?: string;
 }
 
 interface GeminiPart {
@@ -49,25 +42,25 @@ interface GeminiResponse {
 }
 
 /**
- * Gemini Flash 2.0 (pedido del proyecto).
- * Si el alias exacto no está disponible en la cuenta, prueba variantes 2.0.
+ * Orden: Flash 2.0 primero (pedido del proyecto).
+ * Luego 2.5 solo si Google ya rechaza generateContent en 2.0.
  */
 function modelosTexto(): string[] {
   const preferido = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
-  const candidatos = [
-    preferido,
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-001",
-    "gemini-2.0-flash-lite",
-    "gemini-2.0-flash-lite-001",
+  return [
+    ...new Set([
+      preferido,
+      "gemini-2.0-flash",
+      "gemini-2.0-flash-001",
+      "gemini-2.0-flash-lite",
+      "gemini-2.0-flash-lite-001",
+      // Fallback operativo si 2.0 está listado pero generateContent ya no funciona
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+    ]),
   ];
-  return [...new Set(candidatos)];
 }
 
-/**
- * Llama a Gemini Flash 2.0 y devuelve asunto + contenido estructurado.
- * Opcionalmente genera imagen con Imagen 3.
- */
 export async function generarContenidoEmail(
   input: GenerarContenidoInput,
 ): Promise<ContenidoGenerado> {
@@ -79,7 +72,7 @@ export async function generarContenidoEmail(
   const marca = input.marca ?? "Bodasesor";
   const tono = input.tono ?? "cercano y profesional";
   const idioma = input.idioma ?? "es";
-  const quiereImagen = input.generarImagen !== false; // por defecto sí
+  const quiereImagen = input.generarImagen !== false;
 
   const prompt = `Eres copywriter de email marketing para la marca "${marca}".
 Idioma: ${idioma}. Tono: ${tono}.
@@ -117,88 +110,108 @@ Reglas:
     },
   };
 
-  let ultimoError = "Gemini Flash 2.0 no respondió";
+  let ultimoError = "Gemini no respondió";
   for (const modelo of modelosTexto()) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = (await response.json()) as GeminiResponse;
+    // Probar v1beta y v1: algunas cuentas aún sirven 2.0 solo en una versión.
+    for (const apiVersion of ["v1beta", "v1"] as const) {
+      const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await response.json()) as GeminiResponse;
 
-    if (!response.ok) {
-      ultimoError = `Gemini ${modelo} (${response.status}): ${data.error?.message ?? JSON.stringify(data)}`;
-      if (response.status === 404) {
+      if (!response.ok) {
+        ultimoError = `Gemini ${modelo} [${apiVersion}] (${response.status}): ${data.error?.message ?? JSON.stringify(data)}`;
+        if (response.status === 404) {
+          continue;
+        }
+        // Otros errores (quota, safety): no tiene sentido seguir con el mismo modelo.
+        if (response.status === 429 || response.status >= 500) {
+          continue;
+        }
+        break;
+      }
+
+      const texto = data.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text ?? "")
+        .join("")
+        .trim();
+
+      if (!texto) {
+        ultimoError = `Gemini ${modelo} no devolvió contenido`;
         continue;
       }
-      throw new Error(ultimoError);
+
+      const parsed = JSON.parse(limpiarJson(texto)) as {
+        asunto?: string;
+        marca?: string;
+        titular?: string;
+        apoyo?: string;
+        bloques?: GenerarPlantillaHtmlInput["bloques"];
+        pie?: string;
+        imagePrompt?: string;
+      };
+
+      if (!parsed.asunto || !parsed.titular) {
+        throw new Error("Gemini devolvió JSON incompleto (faltan asunto/titular)");
+      }
+
+      const bloques = [...(parsed.bloques ?? [])];
+      let imagen: ImagenGenerada | undefined;
+      const imagePrompt = parsed.imagePrompt?.trim();
+      const advertencias: string[] = [];
+
+      if (!modelo.startsWith("gemini-2.0-flash")) {
+        advertencias.push(
+          `Se pidió gemini-2.0-flash pero Google rechazó generateContent; se usó ${modelo}.`,
+        );
+      }
+
+      if (quiereImagen && imagePrompt) {
+        imagen = await generarImagenEmail({
+          prompt: imagePrompt,
+          aspectRatio: "16:9",
+          ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
+        });
+        if (!imagen.modelo.startsWith("imagen-3")) {
+          advertencias.push(
+            `Se pidió Imagen 3 pero no está disponible en la cuenta; se usó ${imagen.modelo}.`,
+          );
+        }
+        bloques.unshift({
+          tipo: "imagen",
+          url: imagen.urlPublica,
+          alt: parsed.titular,
+        });
+      }
+
+      return {
+        asunto: parsed.asunto,
+        modeloTexto: modelo,
+        ...(imagePrompt ? { imagePrompt } : {}),
+        ...(imagen ? { imagen } : {}),
+        ...(advertencias.length > 0
+          ? { advertencia: advertencias.join(" ") }
+          : {}),
+        contenido: {
+          marca: parsed.marca ?? marca,
+          titular: parsed.titular,
+          ...(parsed.apoyo !== undefined ? { apoyo: parsed.apoyo } : {}),
+          bloques,
+          ...(parsed.pie !== undefined ? { pie: parsed.pie } : {}),
+        },
+      };
     }
-
-    const texto = data.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text ?? "")
-      .join("")
-      .trim();
-
-    if (!texto) {
-      ultimoError = `Gemini ${modelo} no devolvió contenido`;
-      continue;
-    }
-
-    const parsed = JSON.parse(limpiarJson(texto)) as {
-      asunto?: string;
-      marca?: string;
-      titular?: string;
-      apoyo?: string;
-      bloques?: GenerarPlantillaHtmlInput["bloques"];
-      pie?: string;
-      imagePrompt?: string;
-    };
-
-    if (!parsed.asunto || !parsed.titular) {
-      throw new Error("Gemini devolvió JSON incompleto (faltan asunto/titular)");
-    }
-
-    const bloques = [...(parsed.bloques ?? [])];
-    let imagen: ImagenGenerada | undefined;
-    const imagePrompt = parsed.imagePrompt?.trim();
-
-    if (quiereImagen && imagePrompt) {
-      imagen = await generarImagenEmail({
-        prompt: imagePrompt,
-        aspectRatio: "16:9",
-        ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
-      });
-      // Inserta la imagen al inicio del cuerpo del email.
-      bloques.unshift({
-        tipo: "imagen",
-        url: imagen.urlPublica,
-        alt: parsed.titular,
-      });
-    }
-
-    return {
-      asunto: parsed.asunto,
-      modeloTexto: modelo,
-      ...(imagePrompt ? { imagePrompt } : {}),
-      ...(imagen ? { imagen } : {}),
-      contenido: {
-        marca: parsed.marca ?? marca,
-        titular: parsed.titular,
-        ...(parsed.apoyo !== undefined ? { apoyo: parsed.apoyo } : {}),
-        bloques,
-        ...(parsed.pie !== undefined ? { pie: parsed.pie } : {}),
-      },
-    };
   }
 
-  throw new Error(
-    `${ultimoError}. Configura GEMINI_MODEL=gemini-2.0-flash si tu cuenta aún lo expone.`,
-  );
+  throw new Error(ultimoError);
 }
 
-/** Lista modelos visibles para esta API key (diagnóstico). */
-export async function listarModelosGemini(): Promise<string[]> {
+export async function listarModelosGemini(): Promise<
+  Array<{ name: string; methods: string[] }>
+> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY no configurada");
@@ -207,7 +220,7 @@ export async function listarModelosGemini(): Promise<string[]> {
     `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(apiKey)}`,
   );
   const data = (await response.json()) as {
-    models?: Array<{ name?: string }>;
+    models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
     error?: { message?: string };
   };
   if (!response.ok) {
@@ -216,9 +229,12 @@ export async function listarModelosGemini(): Promise<string[]> {
     );
   }
   return (data.models ?? [])
-    .map((m) => (m.name ?? "").replace(/^models\//, ""))
-    .filter(Boolean)
-    .sort();
+    .map((m) => ({
+      name: (m.name ?? "").replace(/^models\//, ""),
+      methods: m.supportedGenerationMethods ?? [],
+    }))
+    .filter((m) => m.name)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function limpiarJson(texto: string): string {
