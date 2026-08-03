@@ -1,13 +1,12 @@
 /**
  * Generación de imágenes para emails.
- * Preferencia: Imagen 3 → Imagen 4 (predict).
- * Fallback: modelos Gemini image (generateContent) si Imagen está bloqueado.
+ * Intenta Imagen 3/4 (predict); si Google los bloquea, usa gemini-*-flash-image.
  */
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { candidatosImagen } from "./probe.js";
+import { candidatosImagenLlm, candidatosImagenPredict } from "./probe.js";
 
 export interface GenerarImagenInput {
   prompt: string;
@@ -174,7 +173,7 @@ export async function generarImagenEmail(
 
   const errores: string[] = [];
 
-  for (const modelo of candidatosImagen()) {
+  for (const modelo of candidatosImagenPredict()) {
     try {
       const img = await viaPredict(apiKey, modelo, input);
       if (img) {
@@ -186,14 +185,7 @@ export async function generarImagenEmail(
     }
   }
 
-  // Fallback: Gemini image models (si Imagen 3/4 no están a esta API key)
-  const imageLlms = [
-    "gemini-2.5-flash-image",
-    "gemini-3.1-flash-image",
-    "gemini-3.1-flash-lite-image",
-    "gemini-3-pro-image-preview",
-  ];
-  for (const modelo of imageLlms) {
+  for (const modelo of candidatosImagenLlm()) {
     try {
       const img = await viaGenerateContentImage(apiKey, modelo, input);
       if (img) {
@@ -206,7 +198,7 @@ export async function generarImagenEmail(
   }
 
   throw new Error(
-    `No se pudo generar imagen (Imagen 3/4 ni fallback). Detalle: ${errores.slice(-3).join(" | ")}`,
+    `No se pudo generar imagen. Detalle: ${errores.slice(-3).join(" | ")}`,
   );
 }
 

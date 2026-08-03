@@ -149,8 +149,10 @@ const servidor = http.createServer((req, res) => {
           servicio: "Community Manager Mailling",
           provider: "brevo",
           modelos: {
-            texto: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
-            imagen: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
+            texto: process.env.GEMINI_MODEL ?? "gemini-flash-latest",
+            imagenPredict: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
+            imagen:
+              process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image",
           },
           integraciones: {
             brevo: Boolean(process.env.BREVO_API_KEY),
@@ -194,8 +196,11 @@ const servidor = http.createServer((req, res) => {
         const nombres = modelos.map((m) => m.name);
         enviarJson(res, 200, {
           total: modelos.length,
-          textoPreferido: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
-          imagenPreferida: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
+          textoPreferido: process.env.GEMINI_MODEL ?? "gemini-flash-latest",
+          imagenPreferida:
+            process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image",
+          imagenPredictPreferida:
+            process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
           flash20: modelos.filter((m) => m.name.includes("2.0-flash")),
           imagen: modelos.filter((m) => m.name.includes("imagen")),
           modelos: nombres,

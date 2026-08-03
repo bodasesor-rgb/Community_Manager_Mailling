@@ -144,9 +144,15 @@ Reglas:
       const imagePrompt = parsed.imagePrompt?.trim();
       const advertencias: string[] = [];
 
-      if (!modelo.startsWith("gemini-2.0-flash")) {
+      const pedidoTexto = process.env.GEMINI_MODEL?.trim();
+      if (
+        pedidoTexto &&
+        pedidoTexto !== modelo &&
+        (pedidoTexto.startsWith("gemini-2.0") ||
+          pedidoTexto === "gemini-2.0-flash")
+      ) {
         advertencias.push(
-          `Se pidió gemini-2.0-flash pero Google rechazó generateContent; se usó ${modelo}.`,
+          `GEMINI_MODEL=${pedidoTexto} no acepta generateContent; se usó ${modelo}.`,
         );
       }
 
@@ -156,9 +162,14 @@ Reglas:
           aspectRatio: "16:9",
           ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
         });
-        if (!imagen.modelo.startsWith("imagen-3")) {
+        const pedidoImagen = process.env.IMAGEN_MODEL?.trim();
+        if (
+          pedidoImagen &&
+          pedidoImagen.startsWith("imagen-") &&
+          !imagen.modelo.startsWith("imagen-")
+        ) {
           advertencias.push(
-            `Se pidió Imagen 3 pero no está disponible en la cuenta; se usó ${imagen.modelo}.`,
+            `IMAGEN_MODEL=${pedidoImagen} no disponible; se usó ${imagen.modelo}.`,
           );
         }
         bloques.unshift({
