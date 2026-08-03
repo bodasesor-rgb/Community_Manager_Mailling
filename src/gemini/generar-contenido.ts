@@ -36,8 +36,17 @@ interface GeminiResponse {
   };
 }
 
-function modeloGemini(): string {
-  return process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+/** Modelos a probar en orden (el primero configurable por env). */
+function modelosGemini(): string[] {
+  const preferido = process.env.GEMINI_MODEL?.trim();
+  const candidatos = [
+    preferido,
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash",
+  ].filter((m): m is string => Boolean(m));
+  return [...new Set(candidatos)];
 }
 
 /**
@@ -82,59 +91,69 @@ Reglas:
 - Sin emojis.
 - Contenido útil y concreto para community management / bodas.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modeloGemini()}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.7,
-        responseMimeType: "application/json",
-      },
-    }),
-  });
-
-  const data = (await response.json()) as GeminiResponse;
-  if (!response.ok) {
-    throw new Error(
-      `Gemini falló (${response.status}): ${data.error?.message ?? JSON.stringify(data)}`,
-    );
-  }
-
-  const texto = data.candidates?.[0]?.content?.parts
-    ?.map((p) => p.text ?? "")
-    .join("")
-    .trim();
-
-  if (!texto) {
-    throw new Error("Gemini no devolvió contenido");
-  }
-
-  const parsed = JSON.parse(limpiarJson(texto)) as {
-    asunto?: string;
-    marca?: string;
-    titular?: string;
-    apoyo?: string;
-    bloques?: GenerarPlantillaHtmlInput["bloques"];
-    pie?: string;
-  };
-
-  if (!parsed.asunto || !parsed.titular) {
-    throw new Error("Gemini devolvió JSON incompleto (faltan asunto/titular)");
-  }
-
-  return {
-    asunto: parsed.asunto,
-    contenido: {
-      marca: parsed.marca ?? marca,
-      titular: parsed.titular,
-      ...(parsed.apoyo !== undefined ? { apoyo: parsed.apoyo } : {}),
-      ...(parsed.bloques !== undefined ? { bloques: parsed.bloques } : {}),
-      ...(parsed.pie !== undefined ? { pie: parsed.pie } : {}),
+  const body = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.7,
+      responseMimeType: "application/json",
     },
   };
+
+  let ultimoError = "Gemini no respondió";
+  for (const modelo of modelosGemini()) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await response.json()) as GeminiResponse;
+
+    if (!response.ok) {
+      ultimoError = `Gemini ${modelo} (${response.status}): ${data.error?.message ?? JSON.stringify(data)}`;
+      // Si el modelo no existe, probar el siguiente.
+      if (response.status === 404) {
+        continue;
+      }
+      throw new Error(ultimoError);
+    }
+
+    const texto = data.candidates?.[0]?.content?.parts
+      ?.map((p) => p.text ?? "")
+      .join("")
+      .trim();
+
+    if (!texto) {
+      ultimoError = `Gemini ${modelo} no devolvió contenido`;
+      continue;
+    }
+
+    const parsed = JSON.parse(limpiarJson(texto)) as {
+      asunto?: string;
+      marca?: string;
+      titular?: string;
+      apoyo?: string;
+      bloques?: GenerarPlantillaHtmlInput["bloques"];
+      pie?: string;
+    };
+
+    if (!parsed.asunto || !parsed.titular) {
+      throw new Error("Gemini devolvió JSON incompleto (faltan asunto/titular)");
+    }
+
+    return {
+      asunto: parsed.asunto,
+      contenido: {
+        marca: parsed.marca ?? marca,
+        titular: parsed.titular,
+        ...(parsed.apoyo !== undefined ? { apoyo: parsed.apoyo } : {}),
+        ...(parsed.bloques !== undefined ? { bloques: parsed.bloques } : {}),
+        ...(parsed.pie !== undefined ? { pie: parsed.pie } : {}),
+      },
+    };
+  }
+
+  throw new Error(ultimoError);
 }
 
 /** Quita fences ```json si el modelo las incluye. */

@@ -39,13 +39,24 @@ export class KommoClient {
   private readonly token: string;
 
   constructor(baseUrl?: string, token?: string) {
-    const url = (baseUrl ?? process.env.KOMMO_BASE_URL ?? "").replace(/\/+$/, "");
-    const clave = token ?? process.env.KOMMO_CLAVE_SECRETA ?? "";
+    // Acepta https://cuenta.kommo.com o .../api/v4
+    let url = (baseUrl ?? process.env.KOMMO_BASE_URL ?? "").trim();
+    url = url.replace(/\/+$/, "");
+    url = url.replace(/\/api\/v4$/i, "");
+
+    const clave =
+      token ??
+      process.env.KOMMO_ACCESS_TOKEN ??
+      process.env.KOMMO_CLAVE_SECRETA ??
+      "";
+
     if (!url) {
       throw new Error("KOMMO_BASE_URL no configurada");
     }
     if (!clave) {
-      throw new Error("KOMMO_CLAVE_SECRETA no configurada");
+      throw new Error(
+        "KOMMO_CLAVE_SECRETA / KOMMO_ACCESS_TOKEN no configurada",
+      );
     }
     this.baseUrl = url;
     this.token = clave;
@@ -62,7 +73,13 @@ export class KommoClient {
 
     if (!response.ok) {
       const detalle = await response.text();
-      throw new Error(`Kommo GET ${path} falló (${response.status}): ${detalle}`);
+      const pista =
+        response.status === 401
+          ? " (usa un long-lived token de Kommo en KOMMO_CLAVE_SECRETA; la clave secreta de webhook no sirve para la API)"
+          : "";
+      throw new Error(
+        `Kommo GET ${path} falló (${response.status}): ${detalle}${pista}`,
+      );
     }
 
     return (await response.json()) as T;

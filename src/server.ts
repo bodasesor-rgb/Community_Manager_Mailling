@@ -141,17 +141,21 @@ const servidor = http.createServer((req, res) => {
         const ok = await provider.verificarConexion();
         const kommo = kommoOpcional();
         let kommoOk: boolean | null = null;
+        let kommoError: string | null = null;
         if (kommo) {
           try {
             kommoOk = await kommo.verificarConexion();
-          } catch {
+          } catch (error: unknown) {
             kommoOk = false;
+            kommoError =
+              error instanceof Error ? error.message : "error kommo";
           }
         }
         enviarJson(res, 200, {
           ok,
           brevo: ok,
           kommo: kommoOk,
+          kommoError,
           gemini: Boolean(process.env.GEMINI_API_KEY),
         });
         return;
