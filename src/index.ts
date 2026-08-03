@@ -4,6 +4,7 @@ export {
   type Contacto,
   type SincronizarContactoInput,
   type Remitente,
+  type RemitenteVerificado,
   type CrearPlantillaInput,
   type ActualizarPlantillaInput,
   type CrearCampañaInput,

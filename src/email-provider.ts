@@ -68,6 +68,14 @@ export interface IdResultado {
   id: number;
 }
 
+/** Remitente verificado en el proveedor (Brevo senders). */
+export interface RemitenteVerificado {
+  id: number;
+  nombre: string;
+  email: string;
+  activo: boolean;
+}
+
 /**
  * Contrato del proveedor de email.
  * Implementaciones: Brevo hoy, Amazon SES después.
@@ -75,6 +83,9 @@ export interface IdResultado {
 export interface EmailProvider {
   /** Comprueba que la API key y la cuenta respondan. */
   verificarConexion(): Promise<boolean>;
+
+  /** Lista remitentes verificados disponibles para enviar. */
+  listarRemitentes(): Promise<RemitenteVerificado[]>;
 
   /** Baja TODOS los contactos (paginado en el proveedor). */
   listarContactos(): Promise<Contacto[]>;
@@ -135,6 +146,17 @@ interface BrevoIdResponse {
 interface BrevoAccountResponse {
   email?: string;
   companyName?: string;
+}
+
+interface BrevoSenderRaw {
+  id: number;
+  name?: string;
+  email: string;
+  active?: boolean;
+}
+
+interface BrevoSendersResponse {
+  senders?: BrevoSenderRaw[];
 }
 
 // ---------------------------------------------------------------------------
@@ -207,6 +229,20 @@ export class BrevoProvider implements EmailProvider {
   async verificarConexion(): Promise<boolean> {
     const cuenta = await this.request<BrevoAccountResponse>("GET", "/account");
     return Boolean(cuenta);
+  }
+
+  /** Lista remitentes (GET /senders). */
+  async listarRemitentes(): Promise<RemitenteVerificado[]> {
+    const respuesta = await this.request<BrevoSendersResponse>(
+      "GET",
+      "/senders",
+    );
+    return (respuesta.senders ?? []).map((s) => ({
+      id: s.id,
+      nombre: s.name ?? s.email,
+      email: s.email,
+      activo: s.active ?? false,
+    }));
   }
 
   /**

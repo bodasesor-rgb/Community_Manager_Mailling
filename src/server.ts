@@ -104,6 +104,12 @@ const servidor = http.createServer((req, res) => {
         return;
       }
 
+      if (method === "GET" && path === "/remitentes") {
+        const remitentes = await provider.listarRemitentes();
+        enviarJson(res, 200, { total: remitentes.length, remitentes });
+        return;
+      }
+
       if (method === "GET" && path === "/contactos") {
         if (!requiereAuth(req, res)) return;
         const contactos = await provider.listarContactos();
