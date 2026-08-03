@@ -5,6 +5,7 @@
 
 import type { GenerarPlantillaHtmlInput } from "../plantillas/generador.js";
 import { generarImagenEmail, type ImagenGenerada } from "./generar-imagen.js";
+import { candidatosTexto } from "./probe.js";
 
 export interface GenerarContenidoInput {
   brief: string;
@@ -39,26 +40,6 @@ interface GeminiResponse {
   error?: {
     message?: string;
   };
-}
-
-/**
- * Orden: Flash 2.0 primero (pedido del proyecto).
- * Luego 2.5 solo si Google ya rechaza generateContent en 2.0.
- */
-function modelosTexto(): string[] {
-  const preferido = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
-  return [
-    ...new Set([
-      preferido,
-      "gemini-2.0-flash",
-      "gemini-2.0-flash-001",
-      "gemini-2.0-flash-lite",
-      "gemini-2.0-flash-lite-001",
-      // Fallback operativo si 2.0 está listado pero generateContent ya no funciona
-      "gemini-2.5-flash",
-      "gemini-2.5-flash-lite",
-    ]),
-  ];
 }
 
 export async function generarContenidoEmail(
@@ -111,7 +92,7 @@ Reglas:
   };
 
   let ultimoError = "Gemini no respondió";
-  for (const modelo of modelosTexto()) {
+  for (const modelo of candidatosTexto()) {
     // Probar v1beta y v1: algunas cuentas aún sirven 2.0 solo en una versión.
     for (const apiVersion of ["v1beta", "v1"] as const) {
       const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;

@@ -14,6 +14,7 @@ import {
   generarImagenEmail,
   rutaMediaSegura,
 } from "./gemini/generar-imagen.js";
+import { probeModelosGemini } from "./gemini/probe.js";
 import { KommoClient } from "./kommo/cliente.js";
 import { sincronizarContactoKommo } from "./kommo/sincronizar.js";
 import {
@@ -202,6 +203,13 @@ const servidor = http.createServer((req, res) => {
             (m) => m.name.includes("2.0-flash") || m.name.includes("imagen"),
           ),
         });
+        return;
+      }
+
+      /** Prueba real de qué modelos aceptan generate/predict con tu API key. */
+      if (method === "GET" && path === "/gemini/probe") {
+        const probe = await probeModelosGemini();
+        enviarJson(res, 200, probe);
         return;
       }
 
