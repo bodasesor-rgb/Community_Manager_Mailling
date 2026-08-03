@@ -1,22 +1,43 @@
 # Community Manager Mailling
 
-Proyecto de mailing para community management.
+Microservicio de email marketing en Node.js + TypeScript.
+La app habla solo con la interfaz `EmailProvider`; Brevo vive encapsulado en `BrevoProvider`.
 
-## Descripción
+## Requisitos
 
-Repositorio destinado a la gestión y envío de comunicaciones por correo electrónico relacionadas con community management.
+- Node.js 18+ (fetch nativo)
+- Variable de entorno `BREVO_API_KEY`
 
-## Inicio
+## Instalación
 
 ```bash
-git clone https://github.com/bodasesor-rgb/Community_Manager_Mailling.git
-cd Community_Manager_Mailling
+npm install
+cp .env.example .env
+# Edita .env y define BREVO_API_KEY (y opcionalmente BREVO_TEST_SENDER_*)
 ```
 
-## Estado
+## Scripts
 
-Proyecto en etapa inicial. Próximamente se agregará la estructura de código y la documentación de uso.
+```bash
+npm run typecheck      # Compilación TypeScript sin emitir
+npm run build          # Emite a dist/
+npm run probar-brevo   # Verifica conexión, lista contactos y crea plantilla de prueba
+```
 
-## Licencia
+## Uso rápido
 
-Uso privado / por definir.
+```ts
+import { BrevoProvider } from "./src/index.js";
+
+const email = new BrevoProvider();
+
+await email.verificarConexion();
+const contactos = await email.listarContactos();
+await email.sincronizarContacto({ email: "hola@ejemplo.com", listIds: [2] });
+await email.suprimir("baja@ejemplo.com", "unsubscribe");
+```
+
+## Supresión local
+
+Las bajas viven en nuestro lado (`suprimidos.json` por ahora, interfaz lista para DB
+`contactos_suprimidos`). Si un email está suprimido, `sincronizarContacto` no lo sube a Brevo.

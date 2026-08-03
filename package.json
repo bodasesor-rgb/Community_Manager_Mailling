@@ -1,0 +1,20 @@
+{
+  "name": "community-manager-mailling",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Microservicio de email marketing (adaptador Brevo → interfaz EmailProvider)",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "probar-brevo": "tsx scripts/probar-brevo.ts",
+    "probar-supresion": "tsx scripts/probar-supresion.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
