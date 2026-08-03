@@ -1,13 +1,24 @@
 /**
  * Servidor HTTP mínimo para Hostinger (Node nativo, sin Express/axios).
- * Expone la interfaz EmailProvider por HTTP.
+ * Expone EmailProvider + flujo de creación de envíos.
  */
 
 import http from "node:http";
 import { BrevoProvider, type EmailProvider } from "./email-provider.js";
+import {
+  generarPlantillaHtml,
+  type GenerarPlantillaHtmlInput,
+} from "./plantillas/generador.js";
+import {
+  crearEnvio,
+  type CrearEnvioInput,
+  type ModoEnvio,
+} from "./servicios/crear-envio.js";
 
 const puerto = Number(process.env.PORT ?? 3000);
 const provider: EmailProvider = new BrevoProvider();
+/** Si está definida, las rutas de escritura exigen header x-api-key. */
+const serviceApiKey = process.env.SERVICE_API_KEY;
 
 type Json = object | unknown[] | string | number | boolean | null;
 
@@ -44,6 +55,33 @@ function rutaSinQuery(url: string | undefined): string {
   return q >= 0 ? url.slice(0, q) : url;
 }
 
+function requiereAuth(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): boolean {
+  if (!serviceApiKey) {
+    return true;
+  }
+  const key = req.headers["x-api-key"];
+  if (key === serviceApiKey) {
+    return true;
+  }
+  enviarJson(res, 401, { error: "x-api-key inválida o ausente" });
+  return false;
+}
+
+function remitenteDesdeEnv(): { nombre: string; email: string } | null {
+  const email = process.env.REMITENTE_EMAIL ?? process.env.BREVO_TEST_SENDER_EMAIL;
+  if (!email) {
+    return null;
+  }
+  const nombre =
+    process.env.REMITENTE_NOMBRE ??
+    process.env.BREVO_TEST_SENDER_NAME ??
+    "Community Manager";
+  return { nombre, email };
+}
+
 const servidor = http.createServer((req, res) => {
   void (async () => {
     const method = req.method ?? "GET";
@@ -55,6 +93,7 @@ const servidor = http.createServer((req, res) => {
           ok: true,
           servicio: "Community Manager Mailling",
           provider: "brevo",
+          authRequerida: Boolean(serviceApiKey),
         });
         return;
       }
@@ -66,12 +105,14 @@ const servidor = http.createServer((req, res) => {
       }
 
       if (method === "GET" && path === "/contactos") {
+        if (!requiereAuth(req, res)) return;
         const contactos = await provider.listarContactos();
         enviarJson(res, 200, { total: contactos.length, contactos });
         return;
       }
 
       if (method === "POST" && path === "/contactos/sincronizar") {
+        if (!requiereAuth(req, res)) return;
         const body = (await leerJson(req)) as {
           email?: string;
           atributos?: Record<string, unknown>;
@@ -96,7 +137,29 @@ const servidor = http.createServer((req, res) => {
         return;
       }
 
+      /** Vista previa: genera HTML sin tocar Brevo. */
+      if (method === "POST" && path === "/plantillas/vista-previa") {
+        const body = (await leerJson(req)) as Partial<GenerarPlantillaHtmlInput>;
+        if (!body.marca || !body.titular) {
+          enviarJson(res, 400, { error: "marca y titular son requeridos" });
+          return;
+        }
+        const htmlContent = generarPlantillaHtml({
+          marca: body.marca,
+          titular: body.titular,
+          ...(body.apoyo !== undefined ? { apoyo: body.apoyo } : {}),
+          ...(body.bloques !== undefined ? { bloques: body.bloques } : {}),
+          ...(body.pie !== undefined ? { pie: body.pie } : {}),
+          ...(body.colorAcento !== undefined
+            ? { colorAcento: body.colorAcento }
+            : {}),
+        });
+        enviarJson(res, 200, { htmlContent });
+        return;
+      }
+
       if (method === "POST" && path === "/plantillas") {
+        if (!requiereAuth(req, res)) return;
         const body = (await leerJson(req)) as {
           nombre?: string;
           asunto?: string;
@@ -129,7 +192,118 @@ const servidor = http.createServer((req, res) => {
         return;
       }
 
+      /**
+       * Flujo de creación recomendado:
+       * genera HTML → crea plantilla; opcionalmente campaña en borrador.
+       * Default modo=plantilla (no crea campaña).
+       */
+      if (method === "POST" && path === "/envios") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          nombre?: string;
+          asunto?: string;
+          remitente?: { nombre?: string; email?: string };
+          contenido?: GenerarPlantillaHtmlInput;
+          modo?: ModoEnvio;
+          listIds?: number[];
+          scheduledAt?: string;
+        };
+
+        const remitenteEnv = remitenteDesdeEnv();
+        const remitente = body.remitente?.email
+          ? {
+              nombre: body.remitente.nombre ?? "Community Manager",
+              email: body.remitente.email,
+            }
+          : remitenteEnv;
+
+        if (!body.nombre || !body.asunto || !body.contenido || !remitente) {
+          enviarJson(res, 400, {
+            error:
+              "nombre, asunto, contenido y remitente (o REMITENTE_EMAIL) son requeridos",
+          });
+          return;
+        }
+
+        if (!body.contenido.marca || !body.contenido.titular) {
+          enviarJson(res, 400, {
+            error: "contenido.marca y contenido.titular son requeridos",
+          });
+          return;
+        }
+
+        const input: CrearEnvioInput = {
+          nombre: body.nombre,
+          asunto: body.asunto,
+          remitente,
+          contenido: body.contenido,
+          ...(body.modo !== undefined ? { modo: body.modo } : {}),
+          ...(body.listIds !== undefined ? { listIds: body.listIds } : {}),
+          ...(body.scheduledAt !== undefined
+            ? { scheduledAt: body.scheduledAt }
+            : {}),
+        };
+
+        const resultado = await crearEnvio(provider, input);
+        enviarJson(res, 201, {
+          modo: resultado.modo,
+          plantillaId: resultado.plantilla.id,
+          campanaId: resultado.campana?.id ?? null,
+          // No devolvemos el HTML completo en prod para no inflar logs;
+          // usa /plantillas/vista-previa si lo necesitas.
+          htmlLength: resultado.htmlContent.length,
+        });
+        return;
+      }
+
+      if (method === "POST" && path === "/campanas") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          nombre?: string;
+          asunto?: string;
+          remitente?: { nombre?: string; email?: string };
+          htmlContent?: string;
+          templateId?: number;
+          listIds?: number[];
+          scheduledAt?: string;
+        };
+        const remitenteEnv = remitenteDesdeEnv();
+        const remitente = body.remitente?.email
+          ? {
+              nombre: body.remitente.nombre ?? "Community Manager",
+              email: body.remitente.email,
+            }
+          : remitenteEnv;
+
+        if (!body.nombre || !body.asunto || !remitente || !body.listIds?.length) {
+          enviarJson(res, 400, {
+            error:
+              "nombre, asunto, listIds y remitente (o REMITENTE_EMAIL) son requeridos",
+          });
+          return;
+        }
+
+        const resultado = await provider.crearCampaña({
+          nombre: body.nombre,
+          asunto: body.asunto,
+          remitente,
+          listIds: body.listIds,
+          ...(body.htmlContent !== undefined
+            ? { htmlContent: body.htmlContent }
+            : {}),
+          ...(body.templateId !== undefined
+            ? { templateId: body.templateId }
+            : {}),
+          ...(body.scheduledAt !== undefined
+            ? { scheduledAt: body.scheduledAt }
+            : {}),
+        });
+        enviarJson(res, 201, resultado);
+        return;
+      }
+
       if (method === "POST" && path === "/supresion") {
+        if (!requiereAuth(req, res)) return;
         const body = (await leerJson(req)) as {
           email?: string;
           motivo?: string;
@@ -144,6 +318,7 @@ const servidor = http.createServer((req, res) => {
       }
 
       if (method === "GET" && path.startsWith("/supresion/")) {
+        if (!requiereAuth(req, res)) return;
         const email = decodeURIComponent(path.slice("/supresion/".length));
         if (!email) {
           enviarJson(res, 400, { error: "email es requerido" });

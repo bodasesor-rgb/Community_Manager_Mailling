@@ -1,43 +1,32 @@
 # Community Manager Mailling
 
 Microservicio de email marketing en Node.js + TypeScript.
-La app habla solo con la interfaz `EmailProvider`; Brevo vive encapsulado en `BrevoProvider`.
+La app habla solo con `EmailProvider`; Brevo vive en `BrevoProvider`.
 
 ## Requisitos
 
-- Node.js 18+ (fetch nativo)
-- Variable de entorno `BREVO_API_KEY`
-
-## Instalación
-
-```bash
-npm install
-cp .env.example .env
-# Edita .env y define BREVO_API_KEY (y opcionalmente BREVO_TEST_SENDER_*)
-```
+- Node.js 18+
+- `BREVO_API_KEY`
+- `REMITENTE_EMAIL` (remitente verificado en Brevo) para crear plantillas/envíos
 
 ## Scripts
 
 ```bash
-npm run typecheck      # Compilación TypeScript sin emitir
-npm run build          # Emite a dist/
-npm run probar-brevo   # Verifica conexión, lista contactos y crea plantilla de prueba
+npm install
+npm run typecheck
+npm run build
+npm start                 # HTTP en PORT (Hostinger)
+npm run probar-envio      # Generador + plantilla (sin campaña)
 ```
 
-## Uso rápido
+## Flujo de creación
 
-```ts
-import { BrevoProvider } from "./src/index.js";
+1. `POST /plantillas/vista-previa` — genera HTML (sin Brevo)
+2. `POST /envios` con `modo: "plantilla"` — sube plantilla a Brevo
+3. `POST /envios` con `modo: "borrador"` + `listIds` — plantilla + campaña borrador (no envía)
 
-const email = new BrevoProvider();
+## Hostinger
 
-await email.verificarConexion();
-const contactos = await email.listarContactos();
-await email.sincronizarContacto({ email: "hola@ejemplo.com", listIds: [2] });
-await email.suprimir("baja@ejemplo.com", "unsubscribe");
-```
-
-## Supresión local
-
-Las bajas viven en nuestro lado (`suprimidos.json` por ahora, interfaz lista para DB
-`contactos_suprimidos`). Si un email está suprimido, `sincronizarContacto` no lo sube a Brevo.
+- Build: `npm run build`
+- Entry: `dist/src/server.js`
+- Env: `BREVO_API_KEY`, `REMITENTE_EMAIL`, opcional `SERVICE_API_KEY`

@@ -12,7 +12,8 @@
     "start": "node dist/src/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "probar-brevo": "tsx scripts/probar-brevo.ts",
-    "probar-supresion": "tsx scripts/probar-supresion.ts"
+    "probar-supresion": "tsx scripts/probar-supresion.ts",
+    "probar-envio": "tsx scripts/probar-envio.ts"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
