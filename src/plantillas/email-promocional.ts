@@ -222,7 +222,7 @@ function filaCtaWhatsApp(texto: string, url: string): string {
 </tr>`;
 }
 
-function celdaProducto(p: ProductoPromocional, i: number): string {
+function celdaProducto(p: ProductoPromocional, _i: number): string {
   const fotoRaw = (p.foto || "").trim();
   const foto =
     fotoRaw && !fotoRaw.includes("[[")
