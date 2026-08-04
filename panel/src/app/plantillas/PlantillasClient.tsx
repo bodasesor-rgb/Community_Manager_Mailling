@@ -15,17 +15,17 @@ interface Borrador {
 
 const HTML_EJEMPLO = `<!DOCTYPE html>
 <html lang="es">
-<body style="margin:0;padding:0;background:#f3f1ec;font-family:Georgia,serif;">
+<body style="margin:0;padding:0;background:#f4f7fb;font-family:Georgia,serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;">
     <tr><td align="center">
-      <table width="600" style="max-width:600px;width:100%;background:#fff;">
-        <tr><td style="padding:28px;color:#2F5D50;font-size:28px;">Bodasesor</td></tr>
-        <tr><td style="padding:0 28px 12px;font-size:22px;color:#1a1a1a;">Ideas para tu próxima publicación</td></tr>
-        <tr><td style="padding:0 28px 24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#333;">
+      <table width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #d5deea;">
+        <tr><td style="padding:28px;color:#14325c;font-size:28px;">Bodasesor</td></tr>
+        <tr><td style="padding:0 28px 12px;font-size:22px;color:#14325c;">Ideas para tu próxima publicación</td></tr>
+        <tr><td style="padding:0 28px 24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#5b6b7c;">
           Comparte bastidores reales, un tip práctico y una historia corta de cliente.
         </td></tr>
         <tr><td style="padding:0 28px 28px;" align="center">
-          <a href="https://bodasesor.com" style="background:#2F5D50;color:#fff;text-decoration:none;padding:12px 20px;border-radius:4px;font-family:Arial,sans-serif;">Ver guía</a>
+          <a href="https://bodasesor.com" style="background:#14325c;color:#fff;text-decoration:none;padding:12px 20px;border-radius:4px;font-family:Arial,sans-serif;">Ver guía</a>
         </td></tr>
       </table>
     </td></tr>

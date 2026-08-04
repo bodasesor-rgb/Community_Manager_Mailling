@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" role="img" aria-label="Bodasesor Eventos">
+  <text x="0" y="34" font-family="Georgia, 'Times New Roman', Times, serif" font-size="32" font-weight="700" fill="#14325C">Bodasesor</text>
+  <g fill="#14325C" transform="translate(118 40)">
+    <path d="M0 4 C6 -2 14 -2 20 4 C14 8 6 8 0 4 Z"/>
+    <path d="M20 4 C26 -2 34 -2 40 4 C34 8 26 8 20 4 Z"/>
+  </g>
+  <text x="95" y="58" font-family="Arial, Helvetica, sans-serif" font-size="12" fill="#5B6B7C" letter-spacing="4">EVENTOS</text>
+</svg>

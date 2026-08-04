@@ -5,6 +5,7 @@
 
 import http from "node:http";
 import { promises as fs } from "node:fs";
+import path from "node:path";
 import { BrevoProvider, type EmailProvider, type Remitente } from "./email-provider.js";
 import {
   generarContenidoEmail,
@@ -159,6 +160,47 @@ function enviarHtml(res: http.ServerResponse, html: string): void {
   res.end(html);
 }
 
+const assetsDirCandidates = [
+  path.resolve(process.cwd(), "src/panel/assets"),
+  path.resolve(process.cwd(), "dist/src/panel/assets"),
+  path.resolve(process.cwd(), "panel/public"),
+];
+
+async function servirAsset(
+  res: http.ServerResponse,
+  nombre: string,
+): Promise<boolean> {
+  const base = path.basename(nombre);
+  if (!/^[a-zA-Z0-9._-]+$/.test(base)) {
+    return false;
+  }
+  for (const dir of assetsDirCandidates) {
+    const archivo = path.join(dir, base);
+    try {
+      const bytes = await fs.readFile(archivo);
+      const ext = path.extname(base).toLowerCase();
+      const mime =
+        ext === ".svg"
+          ? "image/svg+xml; charset=utf-8"
+          : ext === ".png"
+            ? "image/png"
+            : ext === ".jpg" || ext === ".jpeg"
+              ? "image/jpeg"
+              : "application/octet-stream";
+      res.writeHead(200, {
+        "content-type": mime,
+        "content-length": bytes.length,
+        "cache-control": "public, max-age=86400",
+      });
+      res.end(bytes);
+      return true;
+    } catch {
+      // prueba el siguiente directorio
+    }
+  }
+  return false;
+}
+
 function parseListIdsEnv(): number[] | undefined {
   const raw = process.env.BREVO_DEFAULT_LIST_IDS;
   if (!raw) {
@@ -178,6 +220,14 @@ const servidor = http.createServer((req, res) => {
 
     try {
       // ---- Panel HTML (lo que se ve en el navegador) ----
+      if (method === "GET" && path.startsWith("/assets/")) {
+        const ok = await servirAsset(res, path.slice("/assets/".length));
+        if (!ok) {
+          enviarJson(res, 404, { error: "asset no encontrado" });
+        }
+        return;
+      }
+
       if (method === "GET" && (path === "/" || path === "/panel")) {
         enviarHtml(res, paginaInicioHtml());
         return;

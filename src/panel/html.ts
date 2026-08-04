@@ -1,6 +1,6 @@
 /**
  * HTML del panel para Hostinger (sin Next.js).
- * Formularios visibles en /panel/contactos y /panel/plantillas.
+ * Identidad Bodasesor: azul, blanco y gris + logo.
  */
 
 function layout(titulo: string, activo: "inicio" | "contactos" | "plantillas", cuerpo: string): string {
@@ -10,20 +10,41 @@ function layout(titulo: string, activo: "inicio" | "contactos" | "plantillas", c
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>${titulo} · Bodasesor Correos</title>
+  <link rel="icon" href="/assets/mark.svg" type="image/svg+xml"/>
   <link rel="preconnect" href="https://fonts.googleapis.com"/>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet"/>
   <style>
-    :root{--bg:#f3f1ec;--ink:#1c1b19;--muted:#5e5a52;--line:#d8d2c6;--brand:#2f5d50;--brand2:#23463c;--card:#fffcf7;--danger:#8b3a3a;--warn:#f7efe3}
-    *{box-sizing:border-box} body{margin:0;font-family:"Source Sans 3",system-ui,sans-serif;color:var(--ink);background:radial-gradient(900px 400px at 0% 0%,#dfece4,transparent 55%),var(--bg)}
+    :root{
+      --bg:#f4f7fb;
+      --ink:#1f2937;
+      --muted:#5b6b7c;
+      --line:#d5deea;
+      --brand:#14325c;
+      --brand2:#0f2444;
+      --brand-mid:#3d6ea5;
+      --card:#ffffff;
+      --danger:#8b3a3a;
+      --ok-bg:#eaf1f8;
+      --ok-line:#c5d6ea;
+      --stat:#e8eef6;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:"Source Sans 3",system-ui,sans-serif;color:var(--ink);background:
+      radial-gradient(1000px 420px at 0% -10%, #d7e6f7 0%, transparent 55%),
+      radial-gradient(800px 360px at 100% 0%, #e9eef4 0%, transparent 50%),
+      var(--bg)}
+    .topbar{background:linear-gradient(180deg,var(--brand) 0%, var(--brand2) 100%);color:#fff;padding:14px 0 0}
+    .topbar-inner{max-width:1100px;margin:0 auto;padding:0 16px 14px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+    .logo-link{display:flex;align-items:center;gap:12px;text-decoration:none;color:#fff}
+    .logo-link img{height:48px;width:auto;display:block}
+    .logo-sub{font-size:.9rem;opacity:.85}
+    nav{display:flex;gap:8px;flex-wrap:wrap}
+    nav a{padding:9px 14px;border:1px solid rgba(255,255,255,.28);border-radius:999px;text-decoration:none;color:#fff;background:rgba(255,255,255,.06)}
+    nav a.activo,nav a:hover{background:#fff;color:var(--brand);border-color:#fff}
     .shell{max-width:1100px;margin:0 auto;padding:24px 16px 56px}
-    h1{font-family:Fraunces,Georgia,serif;color:var(--brand);font-size:clamp(2rem,4vw,2.7rem);margin:0}
-    h1 span{display:block;margin-top:6px;font-family:"Source Sans 3",sans-serif;font-size:.95rem;font-weight:500;color:var(--muted)}
-    nav{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 24px}
-    nav a{padding:10px 14px;border:1px solid var(--line);border-radius:999px;text-decoration:none;color:inherit;background:rgba(255,252,247,.8)}
-    nav a.activo,nav a:hover{background:var(--brand);border-color:var(--brand);color:#fff}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 18px 40px rgba(35,40,32,.08)}
-    h2{font-family:Fraunces,Georgia,serif;margin:0 0 8px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 18px 40px rgba(20,50,92,.08)}
+    h2{font-family:Fraunces,Georgia,serif;margin:0 0 8px;color:var(--brand)}
     .lead{color:var(--muted);margin:0 0 18px}
     label{display:grid;gap:6px;font-weight:600;margin-bottom:12px}
     input,textarea,button,select{font:inherit}
@@ -31,29 +52,38 @@ function layout(titulo: string, activo: "inicio" | "contactos" | "plantillas", c
     textarea{min-height:220px;font-family:ui-monospace,Menlo,monospace;font-size:.9rem}
     .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0}
     button{appearance:none;border:0;border-radius:10px;padding:11px 16px;background:var(--brand);color:#fff;font-weight:700;cursor:pointer}
-    button.sec{background:transparent;color:var(--brand);border:1px solid var(--brand)}
+    button:hover{background:var(--brand2)}
+    button.sec{background:#fff;color:var(--brand);border:1px solid var(--brand)}
     button:disabled{opacity:.55;cursor:not-allowed}
     .grid{display:grid;grid-template-columns:1.05fr .95fr;gap:16px}
     @media(max-width:900px){.grid{grid-template-columns:1fr}}
     iframe{width:100%;min-height:520px;border:1px solid var(--line);border-radius:12px;background:#fff}
     .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:16px 0}
-    .stat{background:#e7efe9;border-radius:12px;padding:12px}
-    .stat strong{display:block;font-family:Fraunces,Georgia,serif;font-size:1.5rem}
+    .stat{background:var(--stat);border-radius:12px;padding:12px}
+    .stat strong{display:block;font-family:Fraunces,Georgia,serif;font-size:1.5rem;color:var(--brand)}
     table{width:100%;border-collapse:collapse;margin-top:10px}
     th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line)}
+    th{color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.04em}
     .err{background:#f8ecec;border:1px solid #e5c7c7;color:var(--danger);padding:10px 12px;border-radius:10px}
-    .ok{background:var(--warn);border:1px solid #e5d3b4;padding:10px 12px;border-radius:10px}
+    .ok{background:var(--ok-bg);border:1px solid var(--ok-line);padding:10px 12px;border-radius:10px;color:var(--brand)}
     .muted{color:var(--muted)}
   </style>
 </head>
 <body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="logo-link" href="/panel">
+        <img src="/assets/logo-white.svg" alt="Bodasesor Eventos"/>
+        <span class="logo-sub">Panel de correos</span>
+      </a>
+      <nav>
+        <a href="/panel" class="${activo === "inicio" ? "activo" : ""}">Inicio</a>
+        <a href="/panel/contactos" class="${activo === "contactos" ? "activo" : ""}">Contactos</a>
+        <a href="/panel/plantillas" class="${activo === "plantillas" ? "activo" : ""}">Plantillas</a>
+      </nav>
+    </div>
+  </header>
   <div class="shell">
-    <h1>Bodasesor<span>Panel de correos</span></h1>
-    <nav>
-      <a href="/panel" class="${activo === "inicio" ? "activo" : ""}">Inicio</a>
-      <a href="/panel/contactos" class="${activo === "contactos" ? "activo" : ""}">Contactos</a>
-      <a href="/panel/plantillas" class="${activo === "plantillas" ? "activo" : ""}">Plantillas</a>
-    </nav>
     ${cuerpo}
   </div>
 </body>
@@ -138,16 +168,16 @@ export function paginaContactosHtml(): string {
 }
 
 const HTML_EJEMPLO = `<!DOCTYPE html>
-<html lang="es"><body style="margin:0;padding:0;background:#f3f1ec;font-family:Georgia,serif;">
+<html lang="es"><body style="margin:0;padding:0;background:#f4f7fb;font-family:Georgia,serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;"><tr><td align="center">
-<table width="600" style="max-width:600px;width:100%;background:#fff;">
-<tr><td style="padding:28px;color:#2F5D50;font-size:28px;">Bodasesor</td></tr>
-<tr><td style="padding:0 28px 12px;font-size:22px;color:#1a1a1a;">Ideas para tu próxima publicación</td></tr>
-<tr><td style="padding:0 28px 24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#333;">
+<table width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #d5deea;">
+<tr><td style="padding:22px 28px;background:#14325c;color:#ffffff;font-size:28px;">Bodasesor</td></tr>
+<tr><td style="padding:20px 28px 8px;font-size:22px;color:#14325c;">Ideas para tu próxima publicación</td></tr>
+<tr><td style="padding:0 28px 24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#5b6b7c;">
 Comparte bastidores reales, un tip práctico y una historia corta de cliente.
 </td></tr>
 <tr><td style="padding:0 28px 28px;" align="center">
-<a href="https://bodasesor.com" style="background:#2F5D50;color:#fff;text-decoration:none;padding:12px 20px;border-radius:4px;font-family:Arial,sans-serif;">Ver guía</a>
+<a href="https://bodasesor.com" style="background:#14325c;color:#fff;text-decoration:none;padding:12px 20px;border-radius:4px;font-family:Arial,sans-serif;">Ver guía</a>
 </td></tr>
 </table></td></tr></table></body></html>`;
 

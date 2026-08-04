@@ -34,7 +34,7 @@ export interface GenerarPlantillaHtmlInput {
   bloques?: BloqueContenido[];
   /** Pie legal / baja. */
   pie?: string;
-  /** Color de acento (hex). Por defecto verde bosque, no púrpura genérico. */
+  /** Color de acento (hex). Por defecto azul Bodasesor. */
   colorAcento?: string;
 }
 
@@ -76,7 +76,7 @@ function renderBloque(bloque: BloqueContenido, colorAcento: string): string {
  * Salida lista para pasar a `crearPlantilla` / `crearCampaña`.
  */
 export function generarPlantillaHtml(input: GenerarPlantillaHtmlInput): string {
-  const colorAcento = input.colorAcento ?? "#2F5D50";
+  const colorAcento = input.colorAcento ?? "#14325C";
   const marca = escaparHtml(input.marca);
   const titular = escaparHtml(input.titular);
   const apoyo = input.apoyo

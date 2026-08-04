@@ -16,16 +16,18 @@ export default function RootLayout({
     <html lang="es">
       <body>
         <div className="app-shell">
-          <header className="topbar">
-            <h1 className="brand">
-              Bodasesor
-              <span>Panel de correos · sync y plantillas</span>
-            </h1>
-            <nav className="nav" aria-label="Principal">
-              <Link href="/contactos">Contactos</Link>
-              <Link href="/plantillas">Plantillas</Link>
-            </nav>
-          </header>
+          <div className="topbar-brand">
+            <header className="topbar">
+              <div className="brand-lockup">
+                <img src="/logo-white.svg" alt="Bodasesor Eventos" />
+                <span className="sub">Panel de correos</span>
+              </div>
+              <nav className="nav" aria-label="Principal">
+                <Link href="/contactos">Contactos</Link>
+                <Link href="/plantillas">Plantillas</Link>
+              </nav>
+            </header>
+          </div>
           {children}
         </div>
       </body>
