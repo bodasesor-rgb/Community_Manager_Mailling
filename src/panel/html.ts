@@ -803,9 +803,9 @@ export function paginaCrearHtml(): string {
           </div>
           <div class="section-block" id="box-mods">
             <h3>4 · Modificaciones puntuales</h3>
-            <p class="muted">Si algo no te gusta, escríbelo aquí con el texto nuevo claro. Ej.: «Cambia el titular a: Cancún con luz dorada». Solo se cambian esas cosas: no regenera todo el mail.</p>
+            <p class="muted">Escribe el texto nuevo entre comillas para que se note en la vista previa. Ej.: «Cambia el titular a: Cancún con luz dorada». No regenera el mail entero: solo cambia lo que pides.</p>
             <label>Qué quiero cambiar
-              <textarea id="modificaciones" style="font-family:inherit;min-height:110px" placeholder="Ejemplos:&#10;- Cambia el asunto a algo más corto&#10;- Quita el producto de sillas y pon florería&#10;- El saludo que diga «estimado cliente»&#10;- Haz el código de descuento más grande"></textarea>
+              <textarea id="modificaciones" style="font-family:inherit;min-height:110px" placeholder="Ejemplos:&#10;- Cambia el titular a: «Cancún con luz dorada»&#10;- El saludo debe decir: «Gracias por confiar en Bodasesor»&#10;- Cambia el asunto a: «Tu boda en la Riviera»&#10;- Usa el código MAILING20"></textarea>
             </label>
             <div class="row" style="margin:0">
               <button type="button" class="sec" id="btn-ajustar" disabled>Aplicar modificaciones</button>
@@ -833,9 +833,25 @@ export function paginaCrearHtml(): string {
       let ideaSel = null;
       let ultimoHtml = '';
       const msg = document.getElementById('msg');
-      const preview = document.getElementById('preview');
+      let preview = document.getElementById('preview');
       function setMsg(ok, text){ msg.innerHTML = '<div class="' + (ok?'ok':'err') + '">' + escapeHtml(text) + '</div>'; }
       function escapeHtml(s){return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+      /** Recarga forzada del iframe (srcdoc doble en el mismo tick a veces no pinta). */
+      function setPreviewHtml(html) {
+        const htmlSeguro = html || '';
+        document.getElementById('htmlContent').value = htmlSeguro;
+        ultimoHtml = htmlSeguro;
+        const padre = preview.parentNode;
+        const neu = document.createElement('iframe');
+        neu.id = 'preview';
+        neu.title = 'Vista previa';
+        padre.replaceChild(neu, preview);
+        preview = neu;
+        // Asignar en el siguiente frame para forzar repaint real
+        requestAnimationFrame(function() {
+          preview.srcdoc = htmlSeguro;
+        });
+      }
       function fmtEta(seg){
         const s = Math.max(0, Math.ceil(seg));
         const m = Math.floor(s / 60);
@@ -1029,14 +1045,12 @@ export function paginaCrearHtml(): string {
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'No se pudo generar');
-          ultimoHtml = data.htmlContent;
-          document.getElementById('htmlContent').value = data.htmlContent;
           const asunto = (data.asunto || '').trim();
           const nombre = (data.nombre || (asunto ? ('Bodasesor · ' + asunto) : '')).trim();
           document.getElementById('asunto').value = asunto;
           document.getElementById('nombre').value = nombre;
           if (!asunto) throw new Error('La IA no devolvió asunto; revisa el modelo Gemini.');
-          preview.srcdoc = data.htmlContent;
+          setPreviewHtml(data.htmlContent);
           const segs = Math.round((Date.now() - t0) / 1000);
           document.getElementById('metaImg').textContent =
             'Imágenes: ' + (data.imagenes?.reutilizadas||0) + ' reutilizadas, ' + (data.imagenes?.generadas||0) + ' nuevas · ' + segs + 's';
@@ -1088,25 +1102,36 @@ export function paginaCrearHtml(): string {
           const htmlNuevo = data.htmlContent || '';
           if (!htmlNuevo) throw new Error('La respuesta no trajo HTML nuevo.');
           const mismoHtml = htmlNuevo === htmlAntes;
-          const mismoAsunto = (data.asunto || '') === (document.getElementById('asunto').value || '');
+          const asuntoAntes = document.getElementById('asunto').value || '';
+          const mismoAsunto = (data.asunto || '') === asuntoAntes;
           if (mismoHtml && mismoAsunto) {
             throw new Error('No hubo cambio real en el correo. Reformula el pedido, ej. «Cambia el titular a: …».');
           }
-          ultimoHtml = htmlNuevo;
-          document.getElementById('htmlContent').value = htmlNuevo;
-          document.getElementById('asunto').value = data.asunto || document.getElementById('asunto').value;
+          // Diff visible rápido (titular) para que el usuario vea qué cambió
+          const h1De = (h) => {
+            const m = String(h).match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+            return m ? m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() : '';
+          };
+          const h1Antes = h1De(htmlAntes);
+          const h1Nuevo = h1De(htmlNuevo);
+          document.getElementById('asunto').value = data.asunto || asuntoAntes;
           document.getElementById('nombre').value = data.nombre || document.getElementById('nombre').value;
-          // Forzar refresco del iframe
-          preview.srcdoc = '';
-          preview.srcdoc = htmlNuevo;
+          setPreviewHtml(htmlNuevo);
           document.getElementById('btn-guardar').disabled = false;
           document.getElementById('btn-guardar').classList.add('pulse');
           const segs = Math.round((Date.now() - t0) / 1000);
           stopEta('Listo en ' + fmtEta(segs));
-          document.getElementById('modsMeta').textContent =
-            (mismoHtml ? 'Asunto/nombre actualizados' : 'Preview actualizado') +
-            ' en ' + segs + 's. Puedes pedir otro cambio o Guardar mail.';
+          let meta = mismoHtml
+            ? 'Asunto actualizado (el cuerpo del mail es el mismo)'
+            : 'Vista previa recargada';
+          if (!mismoHtml && h1Antes && h1Nuevo && h1Antes !== h1Nuevo) {
+            meta += ' · Titular: «' + h1Antes.slice(0, 40) + '» → «' + h1Nuevo.slice(0, 40) + '»';
+          }
+          meta += ' · ' + segs + 's. Mira la pre-visualización a la derecha.';
+          document.getElementById('modsMeta').textContent = meta;
           document.getElementById('modificaciones').value = '';
+          // Scroll a la preview para que se note el cambio
+          preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           setMsg(true, 'Cambios aplicados: ' + (data.cambiosAplicados || mods));
         } catch (err) {
           stopEta();

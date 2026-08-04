@@ -1,8 +1,12 @@
 /**
  * Ajustes puntuales sobre un mail ya generado.
- * 1) Intenta cambios deterministas (asunto, titular, saludo, código).
- * 2) Si hace falta, Gemini propone parches buscar/reemplazar.
- * 3) Exige que el HTML o el asunto cambien de verdad; si no, falla.
+ *
+ * Estrategia (robusta, no reescribe el mail entero):
+ * 1) Extrae campos visibles estables (titular, subtítulo, saludo, código, CTA…).
+ * 2) Aplica pedidos claros de forma determinista.
+ * 3) Si hace falta, Gemini propone SOLO valores nuevos de esos campos (JSON).
+ * 4) Reescribe los nodos conocidos en el HTML.
+ * 5) Exige cambio real en texto visible o asunto; si no, falla.
  */
 
 import { generarTextoGemini } from "../gemini/cliente-texto.js";
@@ -24,16 +28,31 @@ export interface AjustarEmailResultado {
   cambiosAplicados: string;
 }
 
+interface CamposVisibles {
+  titular: string;
+  subtitulo: string;
+  saludoInner: string;
+  codigo: string;
+  ctaTexto: string;
+  urgencia: string;
+}
+
+type CamposPatch = Partial<{
+  titular: string;
+  subtitulo: string;
+  saludo: string;
+  codigo: string;
+  ctaTexto: string;
+  urgencia: string;
+  asunto: string;
+  nombre: string;
+}>;
+
 function limpiarJson(texto: string): string {
   return texto
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
-}
-
-interface Parche {
-  buscar: string;
-  reemplazar: string;
 }
 
 function textoVisible(html: string): string {
@@ -50,63 +69,177 @@ function textoVisible(html: string): string {
     .trim();
 }
 
-function aplicarParcheUnaVez(html: string, buscar: string, reemplazar: string): string | null {
-  if (!buscar || reemplazar === undefined) return null;
-  if (html.includes(buscar)) {
-    return html.replace(buscar, reemplazar);
-  }
-  // Variante: colapsar espacios en el HTML y en buscar
-  const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-  const busN = norm(buscar);
-  if (!busN) return null;
-  // Buscar ventana aproximada ignorando saltos dentro de tags cercanos es complejo;
-  // intentamos reemplazo case-insensitive exacto del substring.
-  const idx = html.toLowerCase().indexOf(buscar.toLowerCase());
-  if (idx >= 0) {
-    return html.slice(0, idx) + reemplazar + html.slice(idx + buscar.length);
-  }
-  return null;
+function plainDeHtml(fragmento: string): string {
+  return fragmento
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function aplicarParches(
-  html: string,
-  parches: Parche[],
-): { html: string; aplicados: string[]; fallidos: string[] } {
-  let out = html;
-  const aplicados: string[] = [];
-  const fallidos: string[] = [];
-  for (const p of parches) {
-    const buscar = (p.buscar || "").trim();
-    if (!buscar || p.reemplazar === undefined) continue;
-    if (buscar === p.reemplazar) {
-      fallidos.push(`(sin cambio) ${buscar.slice(0, 60)}`);
-      continue;
-    }
-    const next = aplicarParcheUnaVez(out, buscar, p.reemplazar);
-    if (next === null) {
-      fallidos.push(buscar.slice(0, 80));
-      continue;
-    }
-    out = next;
-    aplicados.push(
-      `«${buscar.slice(0, 60)}» → «${String(p.reemplazar).slice(0, 60)}»`,
-    );
-  }
-  return { html: out, aplicados, fallidos };
+function escaparHtmlTexto(valor: string): string {
+  return valor
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/** Escapa texto pero conserva {{ contact.FIRSTNAME }} y similares. */
+function escaparConservandoBrevo(valor: string): string {
+  return valor
+    .split(/(\{\{\s*[\w.\s]+\s*\}\})/g)
+    .map((parte) =>
+      /^\{\{\s*[\w.\s]+\s*\}\}$/.test(parte) ? parte : escaparHtmlTexto(parte),
+    )
+    .join("");
 }
 
 function extraerEntreComillas(texto: string): string | undefined {
   const m =
-    texto.match(/[«"“']([^«"”']{3,120})[»"”']/) ||
-    texto.match(/:\s*([^\n.]{3,120})$/m) ||
-    texto.match(/\ba\s+([^\n.]{3,120})$/im);
+    texto.match(/[«"“']([^«"”']{3,160})[»"”']/) ||
+    texto.match(/:\s*([^\n.]{3,160})$/m);
   return m?.[1]?.trim();
 }
 
-/** Cambios locales sin IA para pedidos claros. */
-function ajustesDeterministas(
+function normalizarNombre(asunto: string, nombreActual: string): string {
+  const base = (asunto || nombreActual || "Bodasesor").trim();
+  if (!base) return "Bodasesor";
+  return (base.toLowerCase().startsWith("bodasesor")
+    ? base
+    : `Bodasesor · ${base}`
+  )
+    .replace(/\s+/g, " ")
+    .slice(0, 80)
+    .trim();
+}
+
+function extraerCampos(html: string): CamposVisibles {
+  const titular =
+    plainDeHtml(html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] || "") || "";
+
+  // Subtítulo dorado justo bajo el H1 (mismo td navy)
+  let subtitulo = "";
+  const bloqueHero = html.match(
+    /<h1\b[^>]*>[\s\S]*?<\/h1>\s*(<p\b[^>]*>[\s\S]*?<\/p>)?/i,
+  );
+  if (bloqueHero?.[1]) {
+    subtitulo = plainDeHtml(bloqueHero[1]);
+  }
+
+  const saludoMatch = html.match(
+    /<p\b[^>]*>([\s\S]*?\{\{\s*contact\.FIRSTNAME\s*\}\}[\s\S]*?)<\/p>/i,
+  );
+  const saludoInner = saludoMatch?.[1]?.trim() || "";
+
+  const codigo =
+    (html.match(/\b(MAILING\d{1,3})\b/i)?.[1] || "").toUpperCase() || "";
+
+  const ctaMatch = html.match(
+    /<a\b[^>]*(?:whatsapp|cotizar|api\.whatsapp)[^>]*>([\s\S]*?)<\/a>/i,
+  ) || html.match(
+    /<a\b[^>]*style="[^"]*background:#25D366[^"]*"[^>]*>([\s\S]*?)<\/a>/i,
+  );
+  const ctaTexto = plainDeHtml(ctaMatch?.[1] || "");
+
+  // Bloque urgencia: párrafo con MAILING o % de descuento en fondo navy/cream
+  let urgencia = "";
+  const urg = html.match(
+    /<p\b[^>]*>([\s\S]*?(?:MAILING\d{1,3}|%\s*de descuento)[\s\S]*?)<\/p>/i,
+  );
+  if (urg?.[1] && !/\{\{\s*contact\.FIRSTNAME/i.test(urg[1])) {
+    urgencia = plainDeHtml(urg[1]);
+  }
+
+  return { titular, subtitulo, saludoInner, codigo, ctaTexto, urgencia };
+}
+
+function reemplazarH1(html: string, nuevoPlain: string): string {
+  if (!/<h1\b/i.test(html)) return html;
+  const safe = escaparHtmlTexto(nuevoPlain.trim());
+  return html.replace(
+    /(<h1\b[^>]*>)([\s\S]*?)(<\/h1>)/i,
+    `$1${safe.replace(/\$/g, "$$$$")}$3`,
+  );
+}
+
+function reemplazarSubtitulo(html: string, nuevoPlain: string): string {
+  const safe = escaparHtmlTexto(nuevoPlain.trim());
+  const re =
+    /(<h1\b[^>]*>[\s\S]*?<\/h1>\s*<p\b[^>]*>)([\s\S]*?)(<\/p>)/i;
+  if (re.test(html)) {
+    return html.replace(re, `$1${safe.replace(/\$/g, "$$$$")}$3`);
+  }
+  return html;
+}
+
+function reemplazarSaludo(html: string, nuevoSaludo: string): string {
+  let cuerpo = nuevoSaludo.trim();
+  if (!cuerpo) return html;
+  // Asegurar FIRSTNAME
+  if (!/\{\{\s*contact\.FIRSTNAME\s*\}\}/i.test(cuerpo)) {
+    cuerpo = `Hola {{ contact.FIRSTNAME }},<br/><br/>${cuerpo}`;
+  } else if (!/<br\s*\/?>/i.test(cuerpo) && !cuerpo.includes("\n")) {
+    // Si viene en una línea "Hola {{…}}, resto" → separar un poco
+    cuerpo = cuerpo.replace(
+      /(\{\{\s*contact\.FIRSTNAME\s*\}\}\s*,?)\s*/i,
+      "$1<br/><br/>",
+    );
+  }
+  cuerpo = cuerpo.replace(/\n/g, "<br/>");
+  const safe = escaparConservandoBrevo(cuerpo).replace(/\$/g, "$$$$");
+  const re =
+    /(<p\b[^>]*>)([\s\S]*?\{\{\s*contact\.FIRSTNAME\s*\}\}[\s\S]*?)(<\/p>)/i;
+  if (!re.test(html)) return html;
+  return html.replace(re, `$1${safe}$3`);
+}
+
+function reemplazarCodigo(html: string, nuevoCodigo: string): string {
+  const cod = nuevoCodigo.trim().toUpperCase();
+  if (!/^MAILING\d{1,3}$/.test(cod)) return html;
+  const actual = html.match(/\b(MAILING\d{1,3})\b/i)?.[1];
+  if (!actual || actual.toUpperCase() === cod) return html;
+  let out = html.split(actual).join(cod);
+  out = out.split(actual.toUpperCase()).join(cod);
+  // Ajuste % si el número del código sugiere el %
+  const n = Number(cod.replace(/\D/g, ""));
+  if (n > 0 && n <= 50) {
+    out = out.replace(/(\d{1,2})%\s*de descuento/gi, `${n}% de descuento`);
+  }
+  return out;
+}
+
+function reemplazarCtaTexto(html: string, nuevo: string): string {
+  const safe = escaparHtmlTexto(nuevo.trim());
+  const reWa =
+    /(<a\b[^>]*(?:whatsapp|api\.whatsapp)[^>]*>)([\s\S]*?)(<\/a>)/i;
+  if (reWa.test(html)) {
+    return html.replace(reWa, `$1${safe.replace(/\$/g, "$$$$")}$3`);
+  }
+  const reGreen =
+    /(<a\b[^>]*style="[^"]*background:#25D366[^"]*"[^>]*>)([\s\S]*?)(<\/a>)/i;
+  if (reGreen.test(html)) {
+    return html.replace(reGreen, `$1${safe.replace(/\$/g, "$$$$")}$3`);
+  }
+  return html;
+}
+
+function reemplazarUrgencia(html: string, nuevo: string): string {
+  const safe = escaparHtmlTexto(nuevo.trim());
+  const re =
+    /(<p\b[^>]*>)([\s\S]*?(?:MAILING\d{1,3}|%\s*de descuento)[\s\S]*?)(<\/p>)/i;
+  if (!re.test(html)) return html;
+  // No tocar el saludo
+  const m = html.match(re);
+  if (m && /\{\{\s*contact\.FIRSTNAME/i.test(m[2] || "")) return html;
+  return html.replace(re, `$1${safe.replace(/\$/g, "$$$$")}$3`);
+}
+
+function aplicarCampos(
   html: string,
-  mods: string,
+  patch: CamposPatch,
   asuntoActual: string,
   nombreActual: string,
 ): {
@@ -119,8 +252,98 @@ function ajustesDeterministas(
   let asunto = asuntoActual;
   let nombre = nombreActual;
   const aplicados: string[] = [];
+  const antes = extraerCampos(html);
 
-  // Asunto
+  if (patch.titular && patch.titular.trim() && patch.titular.trim() !== antes.titular) {
+    const next = reemplazarH1(out, patch.titular.trim());
+    if (next !== out) {
+      out = next;
+      aplicados.push(
+        `Titular «${antes.titular.slice(0, 40)}» → «${patch.titular.trim().slice(0, 60)}»`,
+      );
+    }
+  }
+
+  if (
+    patch.subtitulo &&
+    patch.subtitulo.trim() &&
+    patch.subtitulo.trim() !== antes.subtitulo
+  ) {
+    const next = reemplazarSubtitulo(out, patch.subtitulo.trim());
+    if (next !== out) {
+      out = next;
+      aplicados.push(`Subtítulo → «${patch.subtitulo.trim().slice(0, 60)}»`);
+    }
+  }
+
+  if (patch.saludo && patch.saludo.trim()) {
+    const plainAntes = plainDeHtml(antes.saludoInner);
+    const plainNuevo = plainDeHtml(
+      patch.saludo.includes("FIRSTNAME")
+        ? patch.saludo
+        : `Hola {{ contact.FIRSTNAME }}, ${patch.saludo}`,
+    );
+    if (plainNuevo && plainNuevo !== plainAntes) {
+      const next = reemplazarSaludo(out, patch.saludo.trim());
+      if (next !== out) {
+        out = next;
+        aplicados.push(`Saludo → «${plainNuevo.slice(0, 70)}»`);
+      }
+    }
+  }
+
+  if (patch.codigo && patch.codigo.trim()) {
+    const next = reemplazarCodigo(out, patch.codigo.trim());
+    if (next !== out) {
+      out = next;
+      aplicados.push(`Código → ${patch.codigo.trim().toUpperCase()}`);
+    }
+  }
+
+  if (
+    patch.ctaTexto &&
+    patch.ctaTexto.trim() &&
+    patch.ctaTexto.trim() !== antes.ctaTexto
+  ) {
+    const next = reemplazarCtaTexto(out, patch.ctaTexto.trim());
+    if (next !== out) {
+      out = next;
+      aplicados.push(`CTA → «${patch.ctaTexto.trim().slice(0, 50)}»`);
+    }
+  }
+
+  if (
+    patch.urgencia &&
+    patch.urgencia.trim() &&
+    patch.urgencia.trim() !== antes.urgencia
+  ) {
+    const next = reemplazarUrgencia(out, patch.urgencia.trim());
+    if (next !== out) {
+      out = next;
+      aplicados.push(`Urgencia → «${patch.urgencia.trim().slice(0, 50)}»`);
+    }
+  }
+
+  if (patch.asunto && patch.asunto.trim() && patch.asunto.trim() !== asunto) {
+    asunto = patch.asunto.trim().slice(0, 90);
+    aplicados.push(`Asunto → «${asunto}»`);
+    if (!patch.nombre) {
+      nombre = normalizarNombre(asunto, nombre);
+    }
+  }
+
+  if (patch.nombre && patch.nombre.trim() && patch.nombre.trim() !== nombre) {
+    nombre = patch.nombre.trim().slice(0, 80);
+    aplicados.push(`Nombre → «${nombre}»`);
+  }
+
+  return { html: out, asunto, nombre, aplicados };
+}
+
+/** Interpreta pedidos claros en español sin IA. */
+function patchDeterminista(mods: string): CamposPatch {
+  const patch: CamposPatch = {};
+
   if (/asunto/i.test(mods)) {
     const nuevo =
       extraerEntreComillas(mods) ||
@@ -129,17 +352,11 @@ function ajustesDeterministas(
         .replace(/[«»"']/g, "")
         .trim()
         .slice(0, 90);
-    if (nuevo && nuevo.length >= 4 && !/^cambia/i.test(nuevo)) {
-      asunto = nuevo;
-      nombre = (asunto.toLowerCase().startsWith("bodasesor")
-        ? asunto
-        : `Bodasesor · ${asunto}`
-      ).slice(0, 80);
-      aplicados.push(`Asunto → «${asunto}»`);
+    if (nuevo && nuevo.length >= 4 && !/^(cambia|modifica|actualiza)\b/i.test(nuevo)) {
+      patch.asunto = nuevo;
     }
   }
 
-  // Titular / h1
   if (/titular|headline|h1|título principal|titulo principal/i.test(mods)) {
     const nuevo =
       extraerEntreComillas(mods) ||
@@ -151,199 +368,204 @@ function ajustesDeterministas(
         .replace(/[«»"']/g, "")
         .trim()
         .slice(0, 120);
-    if (nuevo && nuevo.length >= 4 && out.match(/<h1\b[^>]*>[\s\S]*?<\/h1>/i)) {
-      const prev = out.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1] ?? "";
-      out = out.replace(
-        /(<h1\b[^>]*>)([\s\S]*?)(<\/h1>)/i,
-        `$1${nuevo.replace(/\$/g, "$$$$")}$3`,
-      );
-      if (out.includes(`>${nuevo}</h1>`) || out.includes(nuevo)) {
-        aplicados.push(`Titular «${prev.replace(/<[^>]+>/g, "").slice(0, 40)}» → «${nuevo}»`);
-      }
+    if (
+      nuevo &&
+      nuevo.length >= 4 &&
+      !/^(más|mas|un poco|hazlo|haz|cambia|modifica)\b/i.test(nuevo)
+    ) {
+      patch.titular = nuevo;
     }
   }
 
-  // Código de descuento MAILING##
-  const mCod = mods.match(/\b(MAILING\d{1,3})\b/i);
-  if (mCod && /c[oó]digo|descuento|mailing/i.test(mods)) {
-    const nuevoCod = mCod[1]!.toUpperCase();
-    if (out.includes("MAILING10") && nuevoCod !== "MAILING10") {
-      out = out.split("MAILING10").join(nuevoCod);
-      aplicados.push(`Código MAILING10 → ${nuevoCod}`);
-      // preheader / urgencia a veces mencionan 10%
-      if (/20|quince|15|5\b/.test(nuevoCod) === false && /MAILING20/i.test(nuevoCod)) {
-        out = out.replace(/10%\s*de descuento/gi, "20% de descuento");
-      }
-    }
+  if (/subt[ií]tulo|bajada|tagline/i.test(mods)) {
+    const nuevo =
+      extraerEntreComillas(mods) ||
+      mods
+        .replace(
+          /^[\s\S]*?(?:subt[ií]tulo|bajada|tagline)\s*(?:a|por|:)?\s*/i,
+          "",
+        )
+        .replace(/[«»"']/g, "")
+        .trim()
+        .slice(0, 160);
+    if (nuevo && nuevo.length >= 4) patch.subtitulo = nuevo;
   }
 
-  // Saludo: reemplaza el párrafo que contiene FIRSTNAME
   if (/saludo/i.test(mods)) {
     const frase =
       extraerEntreComillas(mods) ||
       (mods.match(
-        /saludo\s+(?:debe\s+)?(?:decir|mencione|mencionar|incluya|incluir)\s+(?:que\s+)?(.+)/i,
+        /saludo\s+(?:debe\s+)?(?:decir|mencione|mencionar|incluya|incluir|sea|queda|pase a)\s+(?:que\s+)?(.+)/i,
       )?.[1] ||
         "")
         .replace(/[«»"']/g, "")
         .trim()
-        .slice(0, 220);
-    if (frase.length >= 8) {
-      const reSaludoP =
-        /(<p\b[^>]*>)([\s\S]*?\{\{ contact\.FIRSTNAME \}\}[\s\S]*?)(<\/p>)/i;
-      if (reSaludoP.test(out)) {
-        const safe = frase.replace(/\$/g, "$$$$");
-        out = out.replace(
-          reSaludoP,
-          `$1Hola {{ contact.FIRSTNAME }},<br/><br/>${safe}$3`,
-        );
-        aplicados.push(`Saludo actualizado`);
-      }
-    }
+        .slice(0, 280);
+    if (frase.length >= 6) patch.saludo = frase;
   }
 
-  return { html: out, asunto, nombre, aplicados };
+  const mCod = mods.match(/\b(MAILING\d{1,3})\b/i);
+  if (mCod && /c[oó]digo|descuento|mailing/i.test(mods)) {
+    patch.codigo = mCod[1]!.toUpperCase();
+  }
+
+  if (/\bcta\b|bot[oó]n|whatsapp/i.test(mods) && /texto|diga|diga|camb/i.test(mods)) {
+    const nuevo = extraerEntreComillas(mods);
+    if (nuevo && nuevo.length >= 4) patch.ctaTexto = nuevo;
+  }
+
+  return patch;
 }
 
-async function parchesConGemini(
-  html: string,
+/** ¿El pedido apunta al cuerpo visible del mail (no solo al asunto)? */
+function pedidoPideCambioCuerpo(mods: string): boolean {
+  // Si solo habla de asunto/nombre interno, no exige cambio de cuerpo
+  const sinAsunto = mods
+    .replace(/\basunto\b[\s\S]*$/i, " ")
+    .replace(/\bnombre\s+interno\b[\s\S]*$/i, " ");
+  return /titular|saludo|subt[ií]tulo|cuerpo|texto del mail|producto|descuento|c[oó]digo|cta|bot[oó]n|pon|quita|headline|h1|título principal|titulo principal|título|titulo|elegante|premium|corto|largo|urgente|fondo|color|haz\s+el\s+mail|m[aá]s\s+elegante|m[aá]s\s+premium|modifica\s+el\s+mail/i.test(
+    sinAsunto,
+  );
+}
+
+async function patchConGemini(
+  campos: CamposVisibles,
   mods: string,
   asuntoActual: string,
   nombreActual: string,
   instruccionesOriginales?: string,
-): Promise<{
-  parches: Parche[];
-  asunto: string;
-  nombre: string;
-  modelo: string;
-  resumenModelo: string;
-}> {
-  const extractos: string[] = [];
-  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-  if (h1) {
-    const raw = h1[1];
-    const plain = raw.replace(/<[^>]+>/g, "").trim();
-    extractos.push(`H1_RAW: ${raw}`);
-    extractos.push(`H1_TEXTO: ${plain}`);
-  }
-  const paras = [...html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)].slice(0, 12);
-  for (const m of paras) {
-    const raw = m[1]!;
-    const plain = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    if (plain.length < 12 || plain.length > 320) continue;
-    extractos.push(`P_RAW: ${raw.slice(0, 400)}`);
-    extractos.push(`P_TEXTO: ${plain}`);
-  }
-  if (html.includes("MAILING10")) {
-    extractos.push("CODIGO_RAW: MAILING10");
-  }
+): Promise<{ patch: CamposPatch; modelo: string; resumen: string }> {
+  const prompt = `Eres editor de emails HTML de Bodasesor. El usuario quiere MODIFICAR un mail ya creado.
+NO reescribas el HTML. Devuelve SOLO los campos que deben cambiar, con el texto NUEVO final.
 
-  // Fragmentos literales cortos del HTML para copiar en "buscar"
-  const literales: string[] = [];
-  if (h1) literales.push(h1[0]!);
-  for (const m of paras.slice(0, 4)) {
-    if (m[0] && m[0].length < 500) literales.push(m[0]);
-  }
-
-  const prompt = `Eres editor de emails HTML de Bodasesor. Debes proponer parches buscar→reemplazar que SÍ existan en el HTML.
-
-PEDIDO:
+PEDIDO DEL USUARIO:
 """
 ${mods.slice(0, 2500)}
 """
 
-Asunto actual: ${asuntoActual || "(vacío)"}
-Nombre actual: ${nombreActual || "(vacío)"}
-${instruccionesOriginales?.trim() ? `Brief: ${instruccionesOriginales.trim().slice(0, 600)}\n` : ""}
-
-TEXTOS DEL HTML (usa P_RAW / H1_RAW como base de "buscar" cuando puedas):
-${extractos.map((e) => `- ${e}`).join("\n")}
-
-FRAGMENTOS LITERALES DEL HTML (cópialos exactos en "buscar"):
-${literales.map((l) => `<<<\n${l}\n>>>`).join("\n")}
+CAMPOS ACTUALES (texto visible):
+- titular: ${JSON.stringify(campos.titular)}
+- subtitulo: ${JSON.stringify(campos.subtitulo)}
+- saludo: ${JSON.stringify(plainDeHtml(campos.saludoInner))}
+- codigo: ${JSON.stringify(campos.codigo)}
+- ctaTexto: ${JSON.stringify(campos.ctaTexto)}
+- urgencia: ${JSON.stringify(campos.urgencia)}
+- asunto: ${JSON.stringify(asuntoActual)}
+- nombre: ${JSON.stringify(nombreActual)}
+${instruccionesOriginales?.trim() ? `Brief original: ${instruccionesOriginales.trim().slice(0, 500)}\n` : ""}
 
 Devuelve SOLO JSON:
 {
-  "parches": [
-    { "buscar": "substring EXACTO del HTML", "reemplazar": "nuevo substring" }
-  ],
-  "asunto": "solo cámbialo si el usuario lo pidió; si no, idéntico al actual",
-  "nombre": "solo cámbialo si el usuario lo pidió; si no, idéntico al actual",
-  "cambiosAplicados": "qué cambiaste"
+  "titular": "nuevo o null si no cambia",
+  "subtitulo": "nuevo o null",
+  "saludo": "texto del saludo (puede incluir {{ contact.FIRSTNAME }}) o null",
+  "codigo": "MAILING## o null",
+  "ctaTexto": "nuevo texto del botón o null",
+  "urgencia": "nuevo o null",
+  "asunto": "nuevo o null",
+  "nombre": "nuevo o null",
+  "cambiosAplicados": "resumen corto"
 }
 
 Reglas:
-- Máximo 6 parches.
-- "buscar" DEBE aparecer tal cual en el HTML (incluye tags si usas H1_RAW/P_RAW).
-- Preferir reemplazar el texto dentro de <h1>...</h1> o el bloque <p> del saludo.
-- NO reescribas el correo completo.
-- NO toques {{ contact.FIRSTNAME }}, {{ unsubscribe }}, navbar, logo ni iconos sociales.
-- Si el pedido es solo de asunto/nombre, parches puede ser [].
+- Si el pedido es vago («más elegante», «más premium», «mejor»), DEBES cambiar al menos titular Y saludo con copy claramente distinto.
+- Si pide cambiar un campo concreto, solo ese (y los imprescindibles).
+- El saludo debe conservar o incluir {{ contact.FIRSTNAME }}.
+- codigo solo formato MAILING + número.
+- No inventes URLs. No toques logo ni redes.
+- Los textos nuevos deben verse distintos a los actuales.
 - Sin markdown.`;
 
   const { modelo, texto } = await generarTextoGemini({
     prompt,
-    temperature: 0.1,
-    maxOutputTokens: 2500,
+    temperature: 0.35,
+    maxOutputTokens: 1800,
     responseMimeType: "application/json",
   });
 
-  let parsed: {
-    parches?: Parche[];
-    asunto?: string;
-    nombre?: string;
-    cambiosAplicados?: string;
-    htmlContent?: string;
-  };
+  let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(limpiarJson(texto)) as typeof parsed;
+    parsed = JSON.parse(limpiarJson(texto)) as Record<string, unknown>;
   } catch {
     throw new Error("No se pudo interpretar el ajuste de la IA");
   }
 
-  if (parsed.htmlContent && (!parsed.parches || parsed.parches.length === 0)) {
+  if (typeof parsed.htmlContent === "string" && parsed.htmlContent.length > 200) {
     throw new Error(
-      "El ajuste intentó reescribir todo el mail. Sé más puntual (ej. «cambia el titular a…»).",
+      "El ajuste intentó reescribir todo el mail. Sé más puntual (ej. «Cambia el titular a: …»).",
     );
   }
 
+  const pick = (k: string): string | undefined => {
+    const v = parsed[k];
+    if (v === null || v === undefined) return undefined;
+    if (typeof v !== "string") return undefined;
+    const t = v.trim();
+    if (!t || t.toLowerCase() === "null" || t.toLowerCase() === "sin cambio") {
+      return undefined;
+    }
+    return t;
+  };
+
+  const patch: CamposPatch = {};
+  const titular = pick("titular");
+  const subtitulo = pick("subtitulo");
+  const saludo = pick("saludo");
+  const codigo = pick("codigo");
+  const ctaTexto = pick("ctaTexto");
+  const urgencia = pick("urgencia");
+  const asunto = pick("asunto");
+  const nombre = pick("nombre");
+  if (titular) patch.titular = titular.slice(0, 120);
+  if (subtitulo) patch.subtitulo = subtitulo.slice(0, 180);
+  if (saludo) patch.saludo = saludo.slice(0, 400);
+  if (codigo) patch.codigo = codigo.slice(0, 20);
+  if (ctaTexto) patch.ctaTexto = ctaTexto.slice(0, 80);
+  if (urgencia) patch.urgencia = urgencia.slice(0, 220);
+  if (asunto) patch.asunto = asunto.slice(0, 90);
+  if (nombre) patch.nombre = nombre.slice(0, 80);
+
   return {
-    parches: (parsed.parches ?? []).filter(
-      (p) => typeof p?.buscar === "string" && typeof p?.reemplazar === "string",
-    ),
-    asunto: (parsed.asunto || asuntoActual || "Bodasesor").trim(),
-    nombre: (parsed.nombre || nombreActual || `Bodasesor · ${asuntoActual}`)
-      .replace(/\s+/g, " ")
-      .slice(0, 80)
-      .trim(),
+    patch,
     modelo,
-    resumenModelo: (parsed.cambiosAplicados || "").trim(),
+    resumen: String(parsed.cambiosAplicados || "").trim(),
   };
 }
 
-function reemplazarH1(html: string, nuevo: string): string {
-  if (!/<h1\b/i.test(html)) return html;
-  return html.replace(
-    /(<h1\b[^>]*>)([\s\S]*?)(<\/h1>)/i,
-    `$1${nuevo.replace(/\$/g, "$$$$")}$3`,
-  );
-}
+/** Si el pedido es estético/vago y aún no hay cambio visible, fuerza copy nuevo. */
+async function forzarCopyVisible(
+  campos: CamposVisibles,
+  mods: string,
+): Promise<CamposPatch> {
+  const prompt = `Reescribe titular y saludo de un email Bodasesor para que se note el cambio pedido.
+Pedido: """${mods.slice(0, 800)}"""
+Titular actual: ${JSON.stringify(campos.titular)}
+Saludo actual: ${JSON.stringify(plainDeHtml(campos.saludoInner))}
+Devuelve SOLO JSON: {"titular":"...","saludo":"Hola {{ contact.FIRSTNAME }}, ..."}
+Deben ser claramente distintos a los actuales. Sin markdown.`;
 
-function forzarTitularDesdePedido(html: string, mods: string): string | null {
-  if (!/titular|headline|h1|título|titulo/i.test(mods)) return null;
-  const nuevo =
-    extraerEntreComillas(mods) ||
-    mods
-      .replace(
-        /^[\s\S]*?(?:titular|headline|h1|título principal|titulo principal|título|titulo)\s*(?:a|por|:)?\s*/i,
-        "",
-      )
-      .replace(/[«»"']/g, "")
-      .trim()
-      .slice(0, 120);
-  if (!nuevo || nuevo.length < 4) return null;
-  const next = reemplazarH1(html, nuevo);
-  return next !== html ? next : null;
+  const { texto } = await generarTextoGemini({
+    prompt,
+    temperature: 0.6,
+    maxOutputTokens: 800,
+    responseMimeType: "application/json",
+  });
+  try {
+    const parsed = JSON.parse(limpiarJson(texto)) as {
+      titular?: string;
+      saludo?: string;
+    };
+    const patch: CamposPatch = {};
+    if (parsed.titular?.trim() && parsed.titular.trim() !== campos.titular) {
+      patch.titular = parsed.titular.trim().slice(0, 120);
+    }
+    if (parsed.saludo?.trim()) {
+      patch.saludo = parsed.saludo.trim().slice(0, 400);
+    }
+    return patch;
+  } catch {
+    return {};
+  }
 }
 
 export async function ajustarEmail(
@@ -361,75 +583,68 @@ export async function ajustarEmail(
   const asuntoActual = (input.asunto || "").trim();
   const nombreActual = (input.nombre || "").trim();
   const visibleAntes = textoVisible(htmlOriginal);
+  const camposAntes = extraerCampos(htmlOriginal);
 
-  // 1) Determinista
-  const det = ajustesDeterministas(
-    htmlOriginal,
-    mods,
-    asuntoActual,
-    nombreActual,
-  );
-  let html = det.html;
-  let asunto = det.asunto;
-  let nombre = det.nombre;
-  const aplicados: string[] = [...det.aplicados];
+  let html = htmlOriginal;
+  let asunto = asuntoActual;
+  let nombre = nombreActual;
+  const aplicados: string[] = [];
   let modeloTexto = "determinista";
 
-  const cambioDeterministaSuficiente =
-    html !== htmlOriginal || asunto !== asuntoActual;
+  // 1) Determinista
+  const detPatch = patchDeterminista(mods);
+  if (Object.keys(detPatch).length > 0) {
+    const r = aplicarCampos(html, detPatch, asunto, nombre);
+    html = r.html;
+    asunto = r.asunto;
+    nombre = r.nombre;
+    aplicados.push(...r.aplicados);
+  }
 
-  // 2) Gemini si el cambio determinista no alcanzó (o no hubo)
-  if (!cambioDeterministaSuficiente) {
-    const gem = await parchesConGemini(
-      html,
+  const visibleTrasDet = textoVisible(html);
+  const huboCambioDet =
+    html !== htmlOriginal ||
+    asunto !== asuntoActual ||
+    visibleTrasDet !== visibleAntes;
+
+  // 2) Gemini por campos si aún no hay cambio, o si el pedido pide más y solo cambió asunto
+  // Si el determinista solo tocó asunto pero el usuario también pidió cuerpo → Gemini
+  const faltaCuerpo =
+    huboCambioDet &&
+    html === htmlOriginal &&
+    asunto !== asuntoActual &&
+    pedidoPideCambioCuerpo(mods);
+
+  if (!huboCambioDet || faltaCuerpo) {
+    const gem = await patchConGemini(
+      extraerCampos(html),
       mods,
       asunto,
       nombre,
       input.instruccionesOriginales,
     );
     modeloTexto = gem.modelo;
-    const { html: htmlParcheado, aplicados: ap, fallidos } = aplicarParches(
-      html,
-      gem.parches,
-    );
-    html = htmlParcheado;
-    aplicados.push(...ap);
-
-    if (/asunto/i.test(mods) && gem.asunto && gem.asunto.trim()) {
-      const nuevoAsunto = gem.asunto.trim().slice(0, 90);
-      if (nuevoAsunto !== asunto) {
-        asunto = nuevoAsunto;
-        nombre = (asunto.toLowerCase().startsWith("bodasesor")
-          ? asunto
-          : `Bodasesor · ${asunto}`
-        ).slice(0, 80);
-        aplicados.push(`Asunto → «${asunto}»`);
-      }
+    const r = aplicarCampos(html, gem.patch, asunto, nombre);
+    html = r.html;
+    asunto = r.asunto;
+    nombre = r.nombre;
+    aplicados.push(...r.aplicados);
+    if (aplicados.length === 0 && gem.resumen) {
+      // Gemini dijo algo pero no aplicó — no inventar éxito
     }
+  }
 
-    // Fallback titular si el pedido lo pedía y aún no cambió el h1
-    if (/titular|h1|título|titulo/i.test(mods)) {
-      const forzado = forzarTitularDesdePedido(html, mods);
-      if (forzado && forzado !== html) {
-        html = forzado;
-        aplicados.push("Titular aplicado en <h1>");
-      }
-    }
-
-    if (
-      html === htmlOriginal &&
-      asunto === asuntoActual &&
-      fallidos.length > 0
-    ) {
-      const forzado = forzarTitularDesdePedido(html, mods);
-      if (forzado && forzado !== html) {
-        html = forzado;
-        aplicados.push("Titular aplicado por respaldo");
-      } else {
-        throw new Error(
-          `No pude aplicar el cambio en el HTML. Prueba así: «Cambia el titular a: …» o «El saludo debe decir: …». Falló buscar: ${fallidos[0]}`,
-        );
-      }
+  // 3) Si pidió cambio visible y el texto sigue idéntico, forzar copy
+  let visibleAhora = textoVisible(html);
+  if (pedidoPideCambioCuerpo(mods) && visibleAhora === visibleAntes) {
+    const forz = await forzarCopyVisible(extraerCampos(html), mods);
+    if (Object.keys(forz).length > 0) {
+      modeloTexto = `${modeloTexto}+forzado`;
+      const r = aplicarCampos(html, forz, asunto, nombre);
+      html = r.html;
+      asunto = r.asunto;
+      nombre = r.nombre;
+      aplicados.push(...r.aplicados);
     }
   }
 
@@ -445,6 +660,7 @@ export async function ajustarEmail(
   const htmlCambio = htmlFinal !== htmlOriginal;
   const visibleCambio = visibleDespues !== visibleAntes;
   const asuntoCambio = asunto !== asuntoActual;
+  const camposDespues = extraerCampos(htmlFinal);
 
   if (!htmlCambio && !asuntoCambio) {
     throw new Error(
@@ -452,16 +668,15 @@ export async function ajustarEmail(
     );
   }
 
-  // Si solo cambió asunto, OK. Si pidió cambio visual y el visible es idéntico → error
   if (
-    !asuntoCambio &&
+    pedidoPideCambioCuerpo(mods) &&
     !visibleCambio &&
-    /titular|saludo|texto|producto|descuento|c[oó]digo|pon|quita|cambia/i.test(
-      mods,
-    )
+    camposDespues.titular === camposAntes.titular &&
+    plainDeHtml(camposDespues.saludoInner) ===
+      plainDeHtml(camposAntes.saludoInner)
   ) {
     throw new Error(
-      "El sistema respondió sin alterar el contenido visible. Reformula el cambio citando el texto nuevo entre comillas.",
+      "El sistema no pudo alterar el contenido visible. Reformula citando el texto nuevo entre comillas, ej. «Cambia el titular a: …».",
     );
   }
 
@@ -470,12 +685,14 @@ export async function ajustarEmail(
       ? aplicados.join(" · ")
       : asuntoCambio
         ? `Asunto actualizado a «${asunto}».`
-        : "Cambio aplicado.";
+        : visibleCambio
+          ? "Cambio aplicado en el cuerpo del correo."
+          : "Cambio aplicado.";
 
   return {
     htmlContent: htmlFinal,
     asunto,
-    nombre: nombre
+    nombre: (nombre || normalizarNombre(asunto, nombreActual))
       .replace(/\s+/g, " ")
       .slice(0, 80)
       .trim(),
