@@ -1,6 +1,6 @@
 /**
- * Modelos Gemini permitidos: el configurado en env + 1–2 fallbacks modernos.
- * Remapea 2.0/2.5 (retirados o bloqueados para keys nuevas) → 3.5 Flash.
+ * Modelos Gemini: prioriza Flash-Lite (el más barato usable con keys nuevas).
+ * Remapea 2.0/2.5 (bloqueados) y 3.5 Flash (caro) → 3.1 Flash-Lite.
  */
 
 export interface ProbeModeloResultado {
@@ -10,27 +10,34 @@ export interface ProbeModeloResultado {
   detalle?: string;
 }
 
-/** Default para cuentas nuevas (Google bloquea 2.5 Flash a keys nuevas). */
-const TEXTO_DEFAULT = "gemini-3.5-flash";
+/**
+ * Más económico disponible para keys nuevas (~$0.25 / $1.50 por 1M tokens).
+ * 3.5 Flash cuesta ~6× más en input y ~6× en output.
+ */
+const TEXTO_DEFAULT = "gemini-3.1-flash-lite";
 
-/** Modelos de texto ya retirados / bloqueados para usuarios nuevos. */
+/** Modelos retirados, bloqueados o demasiado caros → Lite económico. */
 const TEXTO_REEMPLAZO: Record<string, string> = {
   "gemini-2.0-flash": TEXTO_DEFAULT,
   "gemini-2.0-flash-001": TEXTO_DEFAULT,
-  "gemini-2.0-flash-lite": "gemini-3.5-flash-lite",
-  "gemini-2.0-flash-lite-001": "gemini-3.5-flash-lite",
+  "gemini-2.0-flash-lite": TEXTO_DEFAULT,
+  "gemini-2.0-flash-lite-001": TEXTO_DEFAULT,
   "gemini-2.5-flash": TEXTO_DEFAULT,
   "gemini-2.5-flash-001": TEXTO_DEFAULT,
-  "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
-  "gemini-2.5-flash-lite-001": "gemini-3.5-flash-lite",
+  "gemini-2.5-flash-lite": TEXTO_DEFAULT,
+  "gemini-2.5-flash-lite-001": TEXTO_DEFAULT,
   "gemini-2.5-pro": TEXTO_DEFAULT,
+  // Si Hostinger aún tiene 3.5 Flash, bajar a Lite.
+  "gemini-3.5-flash": TEXTO_DEFAULT,
+  "gemini-3.6-flash": TEXTO_DEFAULT,
+  "gemini-flash-latest": TEXTO_DEFAULT,
 };
 
-/** Fallbacks cortos si el modelo activo falla con 404. */
+/** Solo Lite en fallbacks (no subir a Flash completo). */
 const TEXTO_FALLBACKS = [
-  "gemini-3.5-flash",
-  "gemini-3.6-flash",
-  "gemini-flash-latest",
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash-lite",
+  "gemini-flash-lite-latest",
 ];
 
 /** Modelo de texto activo (respeta GEMINI_MODEL, corrige retirados). */

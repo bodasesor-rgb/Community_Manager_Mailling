@@ -1,6 +1,7 @@
 /**
  * Llamadas generateContent de texto con reintento corto si el modelo
  * está retirado / bloqueado para usuarios nuevos (404).
+ * Usa Flash-Lite y desactiva thinking facturable cuando se pueda.
  */
 
 import { candidatosTexto } from "./probe.js";
@@ -25,6 +26,36 @@ function modeloNoDisponible(status: number, message: string): boolean {
   );
 }
 
+async function llamarModelo(
+  apiKey: string,
+  modelo: string,
+  prompt: string,
+  generationConfig: Record<string, unknown>,
+): Promise<{ ok: true; texto: string } | { ok: false; status: number; detalle: string }> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig,
+    }),
+  });
+  const data = (await response.json()) as GeminiResponse;
+  const detalle = data.error?.message ?? JSON.stringify(data);
+  if (!response.ok) {
+    return { ok: false, status: response.status, detalle };
+  }
+  const texto = data.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text ?? "")
+    .join("")
+    .trim();
+  if (!texto) {
+    return { ok: false, status: 200, detalle: "sin contenido" };
+  }
+  return { ok: true, texto };
+}
+
 /** generateContent JSON/texto contra el primer modelo candidato que responda. */
 export async function generarTextoGemini(opciones: {
   prompt: string;
@@ -37,45 +68,43 @@ export async function generarTextoGemini(opciones: {
     throw new Error("GEMINI_API_KEY no configurada");
   }
 
-  const body: Record<string, unknown> = {
-    contents: [{ role: "user", parts: [{ text: opciones.prompt }] }],
-    generationConfig: {
-      temperature: opciones.temperature ?? 0.7,
-      ...(opciones.maxOutputTokens
-        ? { maxOutputTokens: opciones.maxOutputTokens }
-        : {}),
-      ...(opciones.responseMimeType
-        ? { responseMimeType: opciones.responseMimeType }
-        : {}),
-    },
+  const baseConfig: Record<string, unknown> = {
+    temperature: opciones.temperature ?? 0.7,
+    ...(opciones.maxOutputTokens
+      ? { maxOutputTokens: opciones.maxOutputTokens }
+      : {}),
+    ...(opciones.responseMimeType
+      ? { responseMimeType: opciones.responseMimeType }
+      : {}),
   };
 
   const errores: string[] = [];
   for (const modelo of candidatosTexto()) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = (await response.json()) as GeminiResponse;
-    const detalle = data.error?.message ?? JSON.stringify(data);
+    // 1) sin thinking facturable  2) config normal si el modelo no acepta thinkingBudget
+    const configs: Array<Record<string, unknown>> = [
+      { ...baseConfig, thinkingConfig: { thinkingBudget: 0 } },
+      baseConfig,
+    ];
 
-    if (!response.ok) {
-      errores.push(`${modelo} (${response.status}): ${detalle}`);
-      if (modeloNoDisponible(response.status, detalle)) continue;
-      throw new Error(`Gemini ${modelo} [v1beta] (${response.status}): ${detalle}`);
-    }
+    for (const generationConfig of configs) {
+      const res = await llamarModelo(
+        apiKey,
+        modelo,
+        opciones.prompt,
+        generationConfig,
+      );
+      if (res.ok) {
+        return { modelo, texto: res.texto };
+      }
 
-    const texto = data.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text ?? "")
-      .join("")
-      .trim();
-    if (!texto) {
-      errores.push(`${modelo}: sin contenido`);
-      continue;
+      errores.push(`${modelo} (${res.status}): ${res.detalle}`);
+      if (/thinking/i.test(res.detalle)) continue;
+      if (modeloNoDisponible(res.status, res.detalle)) break;
+      if (res.status === 200) continue;
+      throw new Error(
+        `Gemini ${modelo} [v1beta] (${res.status}): ${res.detalle}`,
+      );
     }
-    return { modelo, texto };
   }
 
   throw new Error(

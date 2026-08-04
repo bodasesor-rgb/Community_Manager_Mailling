@@ -1,5 +1,5 @@
 /**
- * Generación de contenido de email con Gemini (3.5 Flash + fallbacks).
+ * Generación de contenido de email con Gemini Flash-Lite (bajo costo).
  * Imágenes: Imagen / generateContent según env.
  */
 
