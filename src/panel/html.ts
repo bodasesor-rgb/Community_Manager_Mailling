@@ -741,7 +741,8 @@ export function paginaCrearHtml(): string {
       <div class="steps">
         <div class="step"><span>1</span> Instrucciones</div>
         <div class="step"><span>2</span> Generar</div>
-        <div class="step"><span>3</span> Guardar mail</div>
+        <div class="step"><span>3</span> Modificar (opcional)</div>
+        <div class="step"><span>4</span> Guardar mail</div>
       </div>
       <div id="msg"></div>
       <div class="reglas-box">
@@ -798,6 +799,17 @@ export function paginaCrearHtml(): string {
             <label>Nombre interno <span class="muted">(se genera solo)</span>
               <input id="nombre" readonly placeholder="Se completa al generar el borrador"/>
             </label>
+          </div>
+          <div class="section-block" id="box-mods">
+            <h3>4 · Modificaciones puntuales</h3>
+            <p class="muted">Si algo no te gusta, escríbelo aquí. Solo se cambian esas cosas: no borra ni regenera todo el mail.</p>
+            <label>Qué quiero cambiar
+              <textarea id="modificaciones" style="font-family:inherit;min-height:110px" placeholder="Ejemplos:&#10;- Cambia el asunto a algo más corto&#10;- Quita el producto de sillas y pon florería&#10;- El saludo que diga «estimado cliente»&#10;- Haz el código de descuento más grande"></textarea>
+            </label>
+            <div class="row" style="margin:0">
+              <button type="button" class="sec" id="btn-ajustar" disabled>Aplicar modificaciones</button>
+              <span id="modsMeta" class="muted">Disponible cuando haya un borrador generado.</span>
+            </div>
           </div>
           <div class="section-block">
             <h3>Biblioteca de imágenes</h3>
@@ -988,12 +1000,47 @@ export function paginaCrearHtml(): string {
           document.getElementById('btn-guardar').disabled = false;
           document.getElementById('btn-guardar').classList.add('pulse');
           document.getElementById('btn-generar').classList.remove('pulse');
+          document.getElementById('btn-ajustar').disabled = false;
+          document.getElementById('modsMeta').textContent = 'Listo: escribe el cambio y pulsa Aplicar modificaciones.';
           setMsg(true, data.advertencia
             ? ('Borrador listo. Asunto: «' + asunto + '». Avisos: ' + data.advertencia)
-            : ('Borrador listo. Revisa la vista previa y pulsa Guardar mail.'));
+            : ('Borrador listo. Revisa la vista previa. Si algo no te gusta, usa Modificaciones.'));
           cargarGaleria();
         } catch (err) { setMsg(false, err.message || String(err)); }
         finally { btn.disabled = false; btn.textContent = 'Generar borrador'; }
+      };
+
+      document.getElementById('btn-ajustar').onclick = async () => {
+        const mods = document.getElementById('modificaciones').value.trim();
+        const html = document.getElementById('htmlContent').value || ultimoHtml;
+        if (!html) { setMsg(false, 'Primero genera un borrador.'); return; }
+        if (!mods) { setMsg(false, 'Escribe qué quieres modificar.'); return; }
+        const btn = document.getElementById('btn-ajustar');
+        btn.disabled = true; btn.textContent = 'Aplicando…';
+        try {
+          const res = await fetch('/api/composer/ajustar', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({
+              htmlContent: html,
+              modificaciones: mods,
+              asunto: document.getElementById('asunto').value,
+              nombre: document.getElementById('nombre').value,
+              instruccionesOriginales: document.getElementById('brief').value.trim()
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'No se pudo aplicar el ajuste');
+          ultimoHtml = data.htmlContent;
+          document.getElementById('htmlContent').value = data.htmlContent;
+          document.getElementById('asunto').value = data.asunto || document.getElementById('asunto').value;
+          document.getElementById('nombre').value = data.nombre || document.getElementById('nombre').value;
+          preview.srcdoc = data.htmlContent;
+          document.getElementById('btn-guardar').disabled = false;
+          document.getElementById('btn-guardar').classList.add('pulse');
+          document.getElementById('modsMeta').textContent = 'Ajuste listo. Puedes pedir otro cambio o Guardar mail.';
+          setMsg(true, 'Cambios aplicados: ' + (data.cambiosAplicados || mods));
+        } catch (err) { setMsg(false, err.message || String(err)); }
+        finally { btn.disabled = false; btn.textContent = 'Aplicar modificaciones'; }
       };
 
       document.getElementById('btn-guardar').onclick = async () => {

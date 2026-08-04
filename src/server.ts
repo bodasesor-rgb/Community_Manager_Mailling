@@ -54,6 +54,7 @@ import {
 } from "./panel/media-store.js";
 import { generarIdeasTemas } from "./gemini/generar-ideas.js";
 import { componerEmail } from "./servicios/componer-email.js";
+import { ajustarEmail } from "./servicios/ajustar-email.js";
 import {
   actualizarConocimientoParcial,
   enlaceWhatsAppCotizar,
@@ -481,6 +482,45 @@ const servidor = http.createServer((req, res) => {
         } catch (error: unknown) {
           enviarJson(res, 502, {
             error: error instanceof Error ? error.message : "composer falló",
+          });
+        }
+        return;
+      }
+
+      if (method === "POST" && path === "/api/composer/ajustar") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          htmlContent?: string;
+          modificaciones?: string;
+          asunto?: string;
+          nombre?: string;
+          instruccionesOriginales?: string;
+        };
+        if (!body.modificaciones?.trim()) {
+          enviarJson(res, 400, { error: "modificaciones es requerido" });
+          return;
+        }
+        if (!body.htmlContent?.trim()) {
+          enviarJson(res, 400, {
+            error: "htmlContent es requerido (genera un borrador primero)",
+          });
+          return;
+        }
+        try {
+          const resultado = await ajustarEmail({
+            htmlContent: body.htmlContent,
+            modificaciones: body.modificaciones,
+            ...(body.asunto !== undefined ? { asunto: body.asunto } : {}),
+            ...(body.nombre !== undefined ? { nombre: body.nombre } : {}),
+            ...(body.instruccionesOriginales !== undefined
+              ? { instruccionesOriginales: body.instruccionesOriginales }
+              : {}),
+          });
+          enviarJson(res, 200, resultado);
+        } catch (error: unknown) {
+          enviarJson(res, 502, {
+            error:
+              error instanceof Error ? error.message : "ajuste del mail falló",
           });
         }
         return;
