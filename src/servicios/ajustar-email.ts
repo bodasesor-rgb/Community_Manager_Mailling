@@ -87,13 +87,15 @@ function escaparHtmlTexto(valor: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Escapa texto pero conserva {{ contact.FIRSTNAME }} y similares. */
+/** Escapa texto pero conserva {{ vars Brevo }} y <br/>. */
 function escaparConservandoBrevo(valor: string): string {
   return valor
-    .split(/(\{\{\s*[\w.\s]+\s*\}\})/g)
-    .map((parte) =>
-      /^\{\{\s*[\w.\s]+\s*\}\}$/.test(parte) ? parte : escaparHtmlTexto(parte),
-    )
+    .split(/(\{\{\s*[\w.\s]+\s*\}\}|<br\s*\/?>)/gi)
+    .map((parte) => {
+      if (/^\{\{\s*[\w.\s]+\s*\}\}$/.test(parte)) return parte;
+      if (/^<br\s*\/?>$/i.test(parte)) return "<br/>";
+      return escaparHtmlTexto(parte);
+    })
     .join("");
 }
 

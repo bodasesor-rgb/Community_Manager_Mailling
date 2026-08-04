@@ -54,6 +54,8 @@ async function main() {
     "saludo no aplicado",
   );
   assert(t2.htmlContent.includes("{{ contact.FIRSTNAME }}"), "FIRSTNAME perdido");
+  assert(!t2.htmlContent.includes("&lt;br"), "br no debe escaparse");
+  assert(/<br\s*\/?>/i.test(t2.htmlContent), "saludo debe usar <br/> real");
   console.log("OK saludo", t2.cambiosAplicados);
 
   const t3 = await ajustarEmail({
