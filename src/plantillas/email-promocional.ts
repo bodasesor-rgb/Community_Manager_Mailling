@@ -185,6 +185,23 @@ function filaHero(
 </tr>`;
 }
 
+/** Titular sin imagen (cuando las reglas piden layout sin hero grande). */
+function filaTitularSolo(
+  titulo: string,
+  subtitulo: string | undefined,
+): string {
+  const t = escaparConPlaceholders(titulo);
+  const s = subtitulo
+    ? `<p style="margin:10px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.45;color:${COLORES_BODASESOR.gold};">${escaparConPlaceholders(subtitulo)}</p>`
+    : "";
+  return `<tr>
+  <td style="padding:28px 32px 8px;background:${COLORES_BODASESOR.navy};text-align:center;">
+    <h1 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:28px;line-height:1.25;color:${COLORES_BODASESOR.blanco};font-weight:normal;">${t}</h1>
+    ${s}
+  </td>
+</tr>`;
+}
+
 function filaSaludo(saludo: string): string {
   const cuerpo = escaparConPlaceholders(saludo).replace(/\n/g, "<br/>");
   return `<tr>
@@ -206,15 +223,21 @@ function filaCtaWhatsApp(texto: string, url: string): string {
 }
 
 function celdaProducto(p: ProductoPromocional, i: number): string {
-  const foto = p.foto ?? `[[FOTO_PRODUCTO_${i + 1}]]`;
+  const fotoRaw = (p.foto || "").trim();
+  const foto =
+    fotoRaw && !fotoRaw.includes("[[")
+      ? fotoRaw
+      : ""; // sin placeholder roto: si no hay foto real, omitimos <img>
   const titulo = escaparConPlaceholders(p.titulo);
   const desc = escaparConPlaceholders(p.descripcion).replace(/\n/g, "<br/>");
-  const src = escaparConPlaceholders(foto);
   const href = p.url ? escaparConPlaceholders(p.url) : "#";
+  const img = foto
+    ? `<a href="${href}" style="text-decoration:none;">
+    <img src="${escaparConPlaceholders(foto)}" alt="${titulo}" width="260" style="display:block;width:100%;max-width:260px;height:auto;border:0;margin:0 auto 10px;"/>
+  </a>`
+    : "";
   return `<td width="50%" valign="top" style="padding:10px;">
-  <a href="${href}" style="text-decoration:none;">
-    <img src="${src}" alt="${titulo}" width="260" style="display:block;width:100%;max-width:260px;height:auto;border:0;margin:0 auto 10px;"/>
-  </a>
+  ${img}
   <p style="margin:0 0 6px;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.3;color:${COLORES_BODASESOR.navy};text-align:center;">${titulo}</p>
   <p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.45;color:${COLORES_BODASESOR.muted};text-align:center;">${desc}</p>
   <p style="margin:0;text-align:center;">
@@ -432,7 +455,11 @@ En Bodasesor preparamos experiencias inolvidables en ${destino}. Te compartimos 
       <td align="center" style="padding:0 12px;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;background:${COLORES_BODASESOR.blanco};">
 ${filaCabeceraYNav(logoUrl, navItems)}
-${mostrarHero ? filaHero(heroFoto, input.heroTitulo, input.heroSubtitulo) : ""}
+${
+  mostrarHero
+    ? filaHero(heroFoto, input.heroTitulo, input.heroSubtitulo)
+    : filaTitularSolo(input.heroTitulo, input.heroSubtitulo)
+}
 ${filaSaludo(saludo)}
 ${filaCtaWhatsApp(ctaTexto, ctaUrl)}
 ${filaBlog(blog)}

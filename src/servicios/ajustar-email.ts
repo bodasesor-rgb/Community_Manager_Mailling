@@ -80,11 +80,15 @@ export async function ajustarEmail(
   const extractos: string[] = [];
   const h1 = htmlOriginal.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
   if (h1) extractos.push(`TITULAR: ${h1[1].replace(/<[^>]+>/g, "").trim()}`);
+  const title = htmlOriginal.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (title) extractos.push(`TITLE: ${title[1].replace(/<[^>]+>/g, "").trim()}`);
   const paras = [...htmlOriginal.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)]
     .map((m) => m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
     .filter((t) => t.length > 20 && t.length < 280)
-    .slice(0, 8);
+    .slice(0, 10);
   for (const p of paras) extractos.push(`TEXTO: ${p}`);
+  // Código de descuento visible
+  if (htmlOriginal.includes("MAILING10")) extractos.push("CODIGO: MAILING10");
 
   const prompt = `Eres un editor CIRUJANO de emails HTML. NO reescribas el correo.
 Solo propones reemplazos exactos (buscar → reemplazar) sobre el HTML existente.
