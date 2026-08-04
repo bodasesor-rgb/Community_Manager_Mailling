@@ -29,6 +29,8 @@ export interface ProductoPromocional {
   descripcion: string;
   /** URL o placeholder, p.ej. [[FOTO_PRODUCTO_1]] */
   foto?: string;
+  /** Enlace al producto/servicio en el sitio. */
+  url?: string;
 }
 
 export interface TestimonialPromocional {
@@ -152,6 +154,9 @@ function filaProductos(productos: ProductoPromocional[]): string {
       const titulo = escaparConPlaceholders(p.titulo);
       const desc = escaparConPlaceholders(p.descripcion).replace(/\n/g, "<br/>");
       const src = escaparConPlaceholders(foto);
+      const enlace = p.url
+        ? `<p style="margin:8px 0 0;"><a href="${escaparConPlaceholders(p.url)}" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${COLORES_BODASESOR.navy};font-weight:bold;text-decoration:underline;">Ver servicio</a></p>`
+        : "";
       return `<tr>
   <td style="padding:16px 32px;background:${COLORES_BODASESOR.blanco};">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
@@ -162,6 +167,7 @@ function filaProductos(productos: ProductoPromocional[]): string {
         <td valign="top">
           <p style="margin:0 0 6px;font-family:Georgia,'Times New Roman',serif;font-size:18px;line-height:1.3;color:${COLORES_BODASESOR.navy};">${titulo}</p>
           <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:${COLORES_BODASESOR.muted};">${desc}</p>
+          ${enlace}
         </td>
       </tr>
     </table>

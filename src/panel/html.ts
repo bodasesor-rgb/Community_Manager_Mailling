@@ -5,7 +5,7 @@
 
 import { BUILD_ISO, BUILD_LABEL } from "../build-info.js";
 
-type PaginaActiva = "inicio" | "crear" | "contactos" | "plantillas";
+type PaginaActiva = "inicio" | "crear" | "contactos" | "plantillas" | "sitio";
 
 function layout(titulo: string, activo: PaginaActiva, cuerpo: string): string {
   return `<!DOCTYPE html>
@@ -99,8 +99,9 @@ function layout(titulo: string, activo: PaginaActiva, cuerpo: string): string {
         <nav>
           <a href="/panel" class="${activo === "inicio" ? "activo" : ""}">Inicio</a>
           <a href="/panel/crear" class="${activo === "crear" ? "activo" : ""}">Crear mail</a>
-          <a href="/panel/contactos" class="${activo === "contactos" ? "activo" : ""}">Contactos</a>
           <a href="/panel/plantillas" class="${activo === "plantillas" ? "activo" : ""}">Plantillas</a>
+          <a href="/panel/sitio" class="${activo === "sitio" ? "activo" : ""}">Mi sitio</a>
+          <a href="/panel/contactos" class="${activo === "contactos" ? "activo" : ""}">Contactos</a>
         </nav>
         <div class="build-stamp" title="${BUILD_ISO}">
           <strong>Última actualización</strong>
@@ -122,11 +123,12 @@ export function paginaInicioHtml(): string {
     "inicio",
     `<section class="card">
       <h2>Bienvenido</h2>
-      <p class="lead">Desde aquí escribes el brief del mail, pides ideas de tema a la IA, subes logo y reutilizas imágenes guardadas.</p>
+      <p class="lead">Escribe en palabras normales qué quieres comunicar. La IA lo convierte en plantilla HTML. Las plantillas se guardan en el proyecto y, al aprobar, también en Brevo.</p>
       <div class="row">
         <a href="/panel/crear"><button type="button">Crear mail</button></a>
-        <a href="/panel/contactos"><button type="button" class="sec">Contactos</button></a>
+        <a href="/panel/sitio"><button type="button" class="sec">Mi sitio</button></a>
         <a href="/panel/plantillas"><button type="button" class="sec">Plantillas</button></a>
+        <a href="/panel/contactos"><button type="button" class="sec">Contactos</button></a>
       </div>
       <p class="muted">API JSON sigue en <code>/health</code>. Este panel es la interfaz visual.</p>
     </section>`,
@@ -235,6 +237,9 @@ export function paginaPlantillasHtml(): string {
       </div>
       <h3 style="font-family:Fraunces,Georgia,serif;margin-top:28px">Borradores guardados</h3>
       <div id="lista"></div>
+      <h3 style="font-family:Fraunces,Georgia,serif;margin-top:28px">Biblioteca del proyecto (permanente)</h3>
+      <p class="muted">Aquí no se pierden al aprobar. Puedes reabrirlas y volver a subirlas a Brevo.</p>
+      <div id="biblioteca"></div>
     </section>
     <script>
       const htmlContent = document.getElementById('htmlContent');
@@ -337,8 +342,152 @@ export function paginaPlantillasHtml(): string {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'No se pudo aprobar');
           estadoEl.textContent = 'estado: aprobado';
-          setMsg(true, 'Aprobado: plantilla #' + data.plantillaId + ', campaña borrador #' + data.campanaId + '. No se envió.');
+          setMsg(true, 'Aprobado en Brevo (plantilla #' + data.plantillaId + ') y guardado en biblioteca del proyecto (' + data.bibliotecaId + '). No se envió la campaña.');
           cargarLista();
+          cargarBiblioteca();
+        } catch (err) { setMsg(false, err.message || String(err)); }
+      };
+
+      async function cargarBiblioteca(){
+        const res = await fetch('/api/biblioteca');
+        const data = await res.json();
+        const items = data.items || [];
+        const el = document.getElementById('biblioteca');
+        if (!el) return;
+        if (!items.length) { el.innerHTML = '<p class="muted">Aún no hay plantillas en la biblioteca del proyecto.</p>'; return; }
+        el.innerHTML = '<table><thead><tr><th>Nombre</th><th>Asunto</th><th>Brevo</th><th></th></tr></thead><tbody>' +
+          items.map(b => '<tr><td>'+escapeHtml(b.nombre)+'</td><td>'+escapeHtml(b.asunto)+'</td><td>'+escapeHtml(b.brevoPlantillaId ? ('#'+b.brevoPlantillaId) : 'solo local')+'</td><td><button type="button" class="sec" data-lib="'+b.id+'">Abrir</button></td></tr>').join('') +
+          '</tbody></table>';
+        el.querySelectorAll('button[data-lib]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const r = await fetch('/api/biblioteca/' + btn.getAttribute('data-lib'));
+            const b = await r.json();
+            document.getElementById('id').value = '';
+            document.getElementById('nombre').value = b.nombre;
+            document.getElementById('asunto').value = b.asunto;
+            document.getElementById('remNombre').value = b.remitente.nombre;
+            document.getElementById('remEmail').value = b.remitente.email;
+            htmlContent.value = b.htmlContent;
+            estadoEl.textContent = 'estado: biblioteca local' + (b.brevoPlantillaId ? ' + Brevo #'+b.brevoPlantillaId : '');
+            refreshPreview();
+          });
+        });
+      }
+      cargarBiblioteca();
+    </script>`,
+  );
+}
+
+export function paginaSitioHtml(): string {
+  return layout(
+    "Mi sitio",
+    "sitio",
+    `<section class="card">
+      <h2>Mi sitio (Bodasesor)</h2>
+      <p class="lead">Para que la IA enlace blog, productos y redes, necesitamos el mapa del sitio. El HTML de bodasesor.com a menudo bloquea bots (403); el <strong>sitemap sí se puede leer</strong>. Completa a mano Facebook, Instagram y WhatsApp.</p>
+      <div id="msg"></div>
+      <div class="row">
+        <button type="button" id="btn-sync">Sincronizar sitemap</button>
+        <button type="button" class="sec" id="btn-guardar">Guardar redes / URLs</button>
+        <span id="meta" class="muted"></span>
+      </div>
+      <div class="grid">
+        <div>
+          <label>URL base<input id="baseUrl" value="https://bodasesor.com"/></label>
+          <label>Resumen del negocio<textarea id="resumen" style="font-family:inherit;min-height:90px"></textarea></label>
+          <label>URL cotizar / CTA<input id="cotizarUrl"/></label>
+          <label>URL blog<input id="blogUrl"/></label>
+          <label>Instagram<input id="instagram" placeholder="https://instagram.com/..."/></label>
+          <label>Facebook<input id="facebook" placeholder="https://facebook.com/..."/></label>
+          <label>WhatsApp (wa.me)<input id="whatsapp" placeholder="https://wa.me/52..."/></label>
+          <label>LinkedIn<input id="linkedin"/></label>
+          <p class="muted" id="notas"></p>
+          <h3 style="font-family:Fraunces,Georgia,serif">Qué hace falta para “leer todo”</h3>
+          <ol class="muted" style="line-height:1.6">
+            <li>Permitir en el WAF/Cloudflare el User-Agent <code>BodasesorMailingBot/1.0</code> (o poner <code>SITIO_USER_AGENT</code> en Hostinger).</li>
+            <li>O dejar el sitemap público (ya lo está) y completar redes aquí.</li>
+            <li>Opcional: feed/API de productos si más adelante quieres descripciones ricas sin scrapear HTML.</li>
+          </ol>
+        </div>
+        <div>
+          <h3 style="font-family:Fraunces,Georgia,serif;margin-top:0">Inventario</h3>
+          <div id="stats" class="stats"></div>
+          <h4>Productos / servicios</h4>
+          <div id="productos" style="max-height:220px;overflow:auto"></div>
+          <h4>Blog (muestra)</h4>
+          <div id="blog" style="max-height:220px;overflow:auto"></div>
+        </div>
+      </div>
+    </section>
+    <script>
+      const msg = document.getElementById('msg');
+      function setMsg(ok, text){ msg.innerHTML = '<div class="' + (ok?'ok':'err') + '">' + escapeHtml(text) + '</div>'; }
+      function escapeHtml(s){return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+      function pintar(c){
+        document.getElementById('baseUrl').value = c.baseUrl || '';
+        document.getElementById('resumen').value = c.resumen || '';
+        document.getElementById('cotizarUrl').value = c.cotizarUrl || '';
+        document.getElementById('blogUrl').value = c.blogUrl || '';
+        document.getElementById('instagram').value = (c.redes && c.redes.instagram) || '';
+        document.getElementById('facebook').value = (c.redes && c.redes.facebook) || '';
+        document.getElementById('whatsapp').value = (c.redes && c.redes.whatsapp) || '';
+        document.getElementById('linkedin').value = (c.redes && c.redes.linkedin) || '';
+        document.getElementById('notas').textContent = c.notas || '';
+        document.getElementById('meta').textContent = c.sitemapSyncEn
+          ? ('Sitemap: ' + c.sitemapTotalUrls + ' URLs · sync ' + c.sitemapSyncEn)
+          : 'Aún no sincronizado';
+        document.getElementById('stats').innerHTML =
+          '<div class="stat"><strong>'+(c.productos||[]).length+'</strong><span>Productos</span></div>' +
+          '<div class="stat"><strong>'+(c.articulosBlog||[]).length+'</strong><span>Blog</span></div>' +
+          '<div class="stat"><strong>'+(c.ciudades||[]).length+'</strong><span>Ciudades</span></div>';
+        document.getElementById('productos').innerHTML = '<ul>' + (c.productos||[]).slice(0,40).map(p =>
+          '<li><a href="'+escapeHtml(p.url)+'" target="_blank" rel="noopener">'+escapeHtml(p.nombre)+'</a></li>'
+        ).join('') + '</ul>';
+        document.getElementById('blog').innerHTML = '<ul>' + (c.articulosBlog||[]).slice(0,15).map(a =>
+          '<li><a href="'+escapeHtml(a.url)+'" target="_blank" rel="noopener">'+escapeHtml(a.titulo)+'</a></li>'
+        ).join('') + '</ul>';
+      }
+
+      async function cargar(){
+        const res = await fetch('/api/sitio');
+        const c = await res.json();
+        pintar(c);
+      }
+      cargar();
+
+      document.getElementById('btn-sync').onclick = async () => {
+        const btn = document.getElementById('btn-sync');
+        btn.disabled = true; btn.textContent = 'Sincronizando…';
+        try {
+          const res = await fetch('/api/sitio/sync-sitemap', { method:'POST', headers:{'content-type':'application/json'}, body:'{}' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Sync falló');
+          pintar(data.conocimiento);
+          setMsg(true, 'Sitemap leído: ' + data.productos + ' productos, ' + data.articulosBlog + ' artículos, ' + data.ciudades + ' ciudades.');
+        } catch (err) { setMsg(false, err.message || String(err)); }
+        finally { btn.disabled = false; btn.textContent = 'Sincronizar sitemap'; }
+      };
+
+      document.getElementById('btn-guardar').onclick = async () => {
+        try {
+          const body = {
+            baseUrl: document.getElementById('baseUrl').value.trim(),
+            resumen: document.getElementById('resumen').value.trim(),
+            cotizarUrl: document.getElementById('cotizarUrl').value.trim(),
+            blogUrl: document.getElementById('blogUrl').value.trim(),
+            redes: {
+              instagram: document.getElementById('instagram').value.trim() || undefined,
+              facebook: document.getElementById('facebook').value.trim() || undefined,
+              whatsapp: document.getElementById('whatsapp').value.trim() || undefined,
+              linkedin: document.getElementById('linkedin').value.trim() || undefined
+            }
+          };
+          const res = await fetch('/api/sitio', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'No se pudo guardar');
+          pintar(data);
+          setMsg(true, 'Redes y URLs guardadas. Ya se usarán al crear mails.');
         } catch (err) { setMsg(false, err.message || String(err)); }
       };
     </script>`,
@@ -351,12 +500,12 @@ export function paginaCrearHtml(): string {
     "crear",
     `<section class="card">
       <h2>Crear mail</h2>
-      <p class="lead">Escribe qué quieres comunicar. La IA sugiere temas; las imágenes se reutilizan de la biblioteca si encajan, o se generan y se guardan.</p>
+      <p class="lead">Escribe en <strong>palabras normales</strong> qué debe decir el correo (a quién, qué ofrecer, qué enlazar). La IA lo convierte en HTML de plantilla. No necesitas escribir código.</p>
       <div id="msg"></div>
       <div class="grid">
         <div>
-          <label>¿Qué debe decir / incluir el mail?
-            <textarea id="brief" style="font-family:inherit;min-height:140px" placeholder="Ej. Newsletter de bodas en Cancún para junio, tono elegante, CTA a cotizar, mencionar cena en la playa…"></textarea>
+          <label>Instrucciones del mail (lenguaje natural)
+            <textarea id="brief" style="font-family:inherit;min-height:140px" placeholder="Ejemplo: Quiero un mail para parejas que planean boda en Cancún en verano. Hablar de banquetes frente al mar, florería y fotografía. Que cotizen por WhatsApp y lean un artículo del blog sobre tendencias."></textarea>
           </label>
           <div class="row">
             <button type="button" class="sec" id="btn-ideas">Ideas de temas (IA)</button>
@@ -534,19 +683,29 @@ export function paginaCrearHtml(): string {
 
       document.getElementById('btn-guardar').onclick = async () => {
         try {
-          const body = {
+          const remitente = { nombre: 'Bodasesor', email: 'hola@bodasesor.com' };
+          const payload = {
             nombre: document.getElementById('nombre').value || 'Newsletter',
             asunto: document.getElementById('asunto').value,
             htmlContent: document.getElementById('htmlContent').value || ultimoHtml,
-            remitente: { nombre: 'Bodasesor', email: 'hola@bodasesor.com' }
+            remitente,
+            instrucciones: document.getElementById('brief').value.trim(),
+            destino: document.getElementById('destino').value.trim() || undefined,
+            origen: 'composer'
           };
-          const res = await fetch('/api/borradores', {
+          const resB = await fetch('/api/borradores', {
             method:'POST', headers:{'content-type':'application/json'},
-            body: JSON.stringify(body)
+            body: JSON.stringify(payload)
           });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'No se pudo guardar');
-          setMsg(true, 'Guardado. Ábrelo en Plantillas para aprobar en Brevo. id=' + data.id);
+          const borrador = await resB.json();
+          if (!resB.ok) throw new Error(borrador.error || 'No se pudo guardar borrador');
+          const resL = await fetch('/api/biblioteca', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({ ...payload, borradorId: borrador.id })
+          });
+          const lib = await resL.json();
+          if (!resL.ok) throw new Error(lib.error || 'No se pudo guardar en biblioteca');
+          setMsg(true, 'Guardado en el proyecto (biblioteca) y como borrador. En Plantillas puedes aprobarlo a Brevo. biblioteca=' + lib.id);
         } catch (err) { setMsg(false, err.message || String(err)); }
       };
     </script>`,

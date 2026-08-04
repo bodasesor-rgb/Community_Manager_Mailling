@@ -15,6 +15,8 @@ export interface GenerarContenidoInput {
   /** Default false: no gasta Imagen salvo que lo pidas explícito. */
   generarImagen?: boolean;
   baseUrl?: string;
+  /** Contexto del sitio (productos, blog, redes) inyectado al prompt. */
+  contextoSitio?: string;
 }
 
 export interface ContenidoGenerado {
@@ -55,41 +57,46 @@ export async function generarContenidoEmail(
   const idioma = input.idioma ?? "es";
   const quiereImagen = input.generarImagen === true;
 
-  const prompt = `Eres copywriter y diseñador de emails promocionales para "${marca}" (bodas y eventos en México/Latam).
+  const contextoSitio = input.contextoSitio?.trim()
+    ? `\nConocimiento del sitio web (usa URLs reales cuando menciones productos, blog o redes):\n"""\n${input.contextoSitio.trim().slice(0, 6000)}\n"""\n`
+    : "";
+
+  const prompt = `Eres copywriter de emails promocionales para "${marca}" (bodas y eventos en México).
 Idioma: ${idioma}. Tono: ${tono}, cálido y elegante (sin emojis).
-Brief del usuario (tema / destino de la semana):
+
+El usuario escribió INSTRUCCIONES EN LENGUAJE NATURAL (no HTML). Tú las conviertes en el contenido estructurado del email; otro módulo arma el HTML de la plantilla.
+Instrucciones del usuario:
 """
 ${input.brief}
 """
-
+${contextoSitio}
 Devuelve SOLO un JSON válido (sin markdown) con esta forma exacta:
 {
   "asunto": "asunto corto del email (máx 60 caracteres)",
   "marca": "${marca}",
   "titular": "titular hero corto",
   "apoyo": "subtítulo hero corto",
-  "destino": "ciudad o tema principal del brief",
-  "saludo": "2-3 frases. Debe incluir exactamente {{ contact.FIRSTNAME }} al inicio (ej. Hola {{ contact.FIRSTNAME }}, ...)",
+  "destino": "ciudad o tema principal",
+  "saludo": "2-3 frases. Debe incluir exactamente {{ contact.FIRSTNAME }} al inicio",
   "ctaTexto": "texto del botón (ej. Cotizar mi evento)",
   "productos": [
-    { "titulo": "experiencia 1", "descripcion": "1-2 frases" },
-    { "titulo": "experiencia 2", "descripcion": "1-2 frases" },
-    { "titulo": "experiencia 3", "descripcion": "1-2 frases" }
+    { "titulo": "servicio/producto 1", "descripcion": "1-2 frases", "url": "https://bodasesor.com/..." },
+    { "titulo": "servicio/producto 2", "descripcion": "1-2 frases", "url": "https://bodasesor.com/..." },
+    { "titulo": "servicio/producto 3", "descripcion": "1-2 frases", "url": "https://bodasesor.com/..." }
   ],
   "testimonial": { "cita": "frase de cliente", "autor": "Nombre y Nombre" },
-  "blog": { "titulo": "título de artículo", "extracto": "1-2 frases" },
-  "urgencia": "frase corta de escasez de fechas / reserva",
+  "blog": { "titulo": "título de artículo", "extracto": "1-2 frases", "url": "https://bodasesor.com/blog/..." },
+  "urgencia": "frase corta de escasez / reserva",
   "pie": "texto legal corto de comunidad",
-  "imagePrompt": "English visual prompt for a tasteful wedding/event hero photo related to the destination, no text in the image, editorial lifestyle aesthetic"
+  "imagePrompt": "English visual prompt for a tasteful wedding/event hero photo, no text in the image"
 }
 
 Reglas:
-- Exactamente 3 productos.
-- No inventes URLs; el HTML usará placeholders [[ENLACE_COTIZAR]], [[ENLACE_BLOG]], etc.
-- Sin emojis.
-- Contenido concreto para bodas/eventos en el destino del brief.
-- imagePrompt siempre en inglés, concreto y fotográfico.
-- Mantén saludo con la variable Brevo {{ contact.FIRSTNAME }} literal.`;
+- Interpreta el brief como pedidos en palabras normales (qué contar, a quién, qué ofrecer).
+- Exactamente 3 productos; preferir nombres y URLs del conocimiento del sitio si existen.
+- Sin emojis. No inventes dominios raros: solo bodasesor.com o las URLs del conocimiento.
+- Mantén {{ contact.FIRSTNAME }} literal en el saludo.
+- imagePrompt en inglés, fotográfico.`;
 
   const body = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -133,9 +140,9 @@ Reglas:
     destino?: string;
     saludo?: string;
     ctaTexto?: string;
-    productos?: Array<{ titulo?: string; descripcion?: string }>;
+    productos?: Array<{ titulo?: string; descripcion?: string; url?: string }>;
     testimonial?: { cita?: string; autor?: string };
-    blog?: { titulo?: string; extracto?: string };
+    blog?: { titulo?: string; extracto?: string; url?: string };
     urgencia?: string;
     bloques?: GenerarPlantillaHtmlInput["bloques"];
     pie?: string;
@@ -177,6 +184,7 @@ Reglas:
       titulo: p.titulo as string,
       descripcion: p.descripcion as string,
       foto: `[[FOTO_PRODUCTO_${i + 1}]]`,
+      ...(p.url ? { url: p.url } : {}),
     }));
 
   const promocional = {
@@ -199,7 +207,7 @@ Reglas:
           blog: {
             titulo: parsed.blog.titulo,
             extracto: parsed.blog.extracto,
-            url: "[[ENLACE_BLOG]]",
+            url: parsed.blog.url ?? "[[ENLACE_BLOG]]",
           },
         }
       : {}),

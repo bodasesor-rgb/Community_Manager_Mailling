@@ -1,5 +1,6 @@
 /**
- * Orquesta el composer: brief → copy → imágenes (reuso o generación) → HTML.
+ * Orquesta el composer: instrucciones en lenguaje natural → copy → HTML.
+ * Usa conocimiento del sitio (productos/blog/redes) y biblioteca de imágenes.
  */
 
 import { generarContenidoEmail } from "../gemini/generar-contenido.js";
@@ -11,16 +12,20 @@ import {
   obtenerMedia,
   type MediaItem,
 } from "../panel/media-store.js";
+import {
+  conocimientoParaPrompt,
+  leerConocimiento,
+  sugerirArticuloBlog,
+  sugerirProductosParaBrief,
+} from "../sitio/conocimiento.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
 export interface ComposerInput {
   brief: string;
-  /** Idea elegida (opcional). */
   ideaTitulo?: string;
   destino?: string;
   logoId?: string;
-  /** Si true, genera imágenes nuevas cuando no hay compatibles. Default true. */
   generarImagenes?: boolean;
   baseUrl: string;
   marca?: string;
@@ -32,6 +37,7 @@ export interface ComposerResultado {
   htmlContent: string;
   modeloTexto: string;
   destino: string;
+  instrucciones: string;
   imagenes: {
     logo?: MediaItem;
     hero?: MediaItem;
@@ -62,7 +68,6 @@ async function resolverOGenerar(input: {
     texto: input.texto,
   });
   if (existente) {
-    // Refrescar URL absoluta por si cambió el host
     const url = existente.urlPublica.startsWith("http")
       ? existente.urlPublica
       : `${input.baseUrl}/media/${existente.archivo}`;
@@ -101,8 +106,10 @@ async function resolverOGenerar(input: {
 }
 
 export async function componerEmail(input: ComposerInput): Promise<ComposerResultado> {
+  const instrucciones = input.brief.trim();
+  const sitio = await leerConocimiento();
   const briefAmpliado = [
-    input.brief.trim(),
+    instrucciones,
     input.ideaTitulo ? `Idea elegida: ${input.ideaTitulo}` : "",
     input.destino ? `Destino/tema: ${input.destino}` : "",
   ]
@@ -113,6 +120,7 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     brief: briefAmpliado,
     baseUrl: input.baseUrl,
     generarImagen: false,
+    contextoSitio: conocimientoParaPrompt(sitio),
     ...(input.marca !== undefined ? { marca: input.marca } : {}),
   });
 
@@ -127,6 +135,42 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
   const advertencias: string[] = [];
   let reutilizadas = 0;
   let generadas = 0;
+
+  // Enlaces reales del sitio
+  const ctaUrl =
+    sitio.redes.whatsapp || sitio.cotizarUrl || `${sitio.baseUrl}/`;
+  const sugeridos = sugerirProductosParaBrief(sitio, briefAmpliado, 3);
+  const blogSug = sugerirArticuloBlog(sitio, briefAmpliado);
+
+  let productos = [...(promo.productos ?? [])];
+  if (productos.length === 0 && sugeridos.length > 0) {
+    productos = sugeridos.map((p) => ({
+      titulo: p.nombre,
+      descripcion: `Servicio Bodasesor: ${p.nombre}.`,
+      url: p.url,
+    }));
+  } else {
+    productos = productos.map((p, i) => {
+      const match = sugeridos[i];
+      return {
+        ...p,
+        url: p.url && p.url.startsWith("http") ? p.url : match?.url,
+      };
+    });
+  }
+
+  const blog = {
+    titulo: promo.blog?.titulo ?? blogSug?.titulo ?? "Ideas en el blog Bodasesor",
+    extracto:
+      promo.blog?.extracto ??
+      "Consejos y tendencias para tu celebración.",
+    url:
+      (promo.blog?.url && promo.blog.url.startsWith("http")
+        ? promo.blog.url
+        : undefined) ??
+      blogSug?.url ??
+      sitio.blogUrl,
+  };
 
   const logoRes = await resolverOGenerar({
     tipo: "logo",
@@ -161,7 +205,6 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
   }
 
   const productosMedia: MediaItem[] = [];
-  const productos = [...(promo.productos ?? [])];
   for (let i = 0; i < productos.length; i++) {
     const p = productos[i]!;
     try {
@@ -186,12 +229,23 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     }
   }
 
+  if (!sitio.redes.instagram && !sitio.redes.facebook) {
+    advertencias.push(
+      "Redes sociales pendientes: configúralas en /panel/sitio",
+    );
+  }
+
   const htmlContent = generarEmailPromocionalHtml({
     ...promo,
     destino,
+    ctaUrl,
+    blog,
+    productos,
+    facebookUrl: sitio.redes.facebook ?? "[[ENLACE_FACEBOOK]]",
+    instagramUrl: sitio.redes.instagram ?? "[[ENLACE_INSTAGRAM]]",
+    whatsappUrl: sitio.redes.whatsapp ?? "[[ENLACE_WHATSAPP]]",
     ...(logoRes.item ? { logoUrl: logoRes.item.urlPublica } : {}),
     ...(heroItem ? { heroFoto: heroItem.urlPublica } : {}),
-    productos,
   });
 
   if (generado.advertencia) advertencias.push(generado.advertencia);
@@ -202,6 +256,7 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     htmlContent,
     modeloTexto: generado.modeloTexto,
     destino,
+    instrucciones,
     imagenes: {
       ...(logoRes.item ? { logo: logoRes.item } : {}),
       ...(heroItem ? { hero: heroItem } : {}),

@@ -44,6 +44,7 @@ import {
   paginaCrearHtml,
   paginaInicioHtml,
   paginaPlantillasHtml,
+  paginaSitioHtml,
 } from "./panel/html.js";
 import { BUILD_ISO, BUILD_LABEL } from "./build-info.js";
 import {
@@ -53,6 +54,17 @@ import {
 } from "./panel/media-store.js";
 import { generarIdeasTemas } from "./gemini/generar-ideas.js";
 import { componerEmail } from "./servicios/componer-email.js";
+import {
+  actualizarConocimientoParcial,
+  leerConocimiento,
+  sincronizarDesdeSitemap,
+  type EnlaceSocial,
+} from "./sitio/conocimiento.js";
+import {
+  guardarEnBiblioteca,
+  listarPlantillasBiblioteca,
+  obtenerPlantillaBiblioteca,
+} from "./panel/plantillas-biblioteca.js";
 
 const puerto = Number(process.env.PORT ?? 3000);
 const provider: EmailProvider = new BrevoProvider();
@@ -256,6 +268,10 @@ const servidor = http.createServer((req, res) => {
         enviarHtml(res, paginaCrearHtml());
         return;
       }
+      if (method === "GET" && path === "/panel/sitio") {
+        enviarHtml(res, paginaSitioHtml());
+        return;
+      }
 
       if (method === "GET" && path === "/health") {
         enviarJson(res, 200, {
@@ -427,6 +443,128 @@ const servidor = http.createServer((req, res) => {
         return;
       }
 
+      if (method === "GET" && path === "/api/sitio") {
+        const conocimiento = await leerConocimiento();
+        enviarJson(res, 200, conocimiento);
+        return;
+      }
+
+      if (method === "POST" && path === "/api/sitio") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          resumen?: string;
+          cotizarUrl?: string;
+          blogUrl?: string;
+          baseUrl?: string;
+          redes?: EnlaceSocial;
+          notas?: string;
+        };
+        const actualizado = await actualizarConocimientoParcial({
+          ...(body.resumen !== undefined ? { resumen: body.resumen } : {}),
+          ...(body.cotizarUrl !== undefined
+            ? { cotizarUrl: body.cotizarUrl }
+            : {}),
+          ...(body.blogUrl !== undefined ? { blogUrl: body.blogUrl } : {}),
+          ...(body.baseUrl !== undefined ? { baseUrl: body.baseUrl } : {}),
+          ...(body.notas !== undefined ? { notas: body.notas } : {}),
+          ...(body.redes !== undefined ? { redes: body.redes } : {}),
+        });
+        enviarJson(res, 200, actualizado);
+        return;
+      }
+
+      if (method === "POST" && path === "/api/sitio/sync-sitemap") {
+        if (!requiereAuth(req, res)) return;
+        try {
+          const conocimiento = await sincronizarDesdeSitemap();
+          enviarJson(res, 200, {
+            ok: true,
+            productos: conocimiento.productos.length,
+            articulosBlog: conocimiento.articulosBlog.length,
+            ciudades: conocimiento.ciudades.length,
+            sitemapTotalUrls: conocimiento.sitemapTotalUrls,
+            sitemapSyncEn: conocimiento.sitemapSyncEn,
+            conocimiento,
+          });
+        } catch (error: unknown) {
+          enviarJson(res, 502, {
+            error:
+              error instanceof Error ? error.message : "sync sitemap falló",
+          });
+        }
+        return;
+      }
+
+      if (method === "GET" && path === "/api/biblioteca") {
+        const items = await listarPlantillasBiblioteca();
+        enviarJson(res, 200, {
+          total: items.length,
+          items: items.map((i) => ({
+            id: i.id,
+            nombre: i.nombre,
+            asunto: i.asunto,
+            destino: i.destino,
+            origen: i.origen,
+            actualizadoEn: i.actualizadoEn,
+            brevoPlantillaId: i.brevoPlantillaId ?? null,
+            instrucciones: i.instrucciones ?? null,
+          })),
+        });
+        return;
+      }
+
+      if (method === "GET" && path.startsWith("/api/biblioteca/")) {
+        const id = decodeURIComponent(path.slice("/api/biblioteca/".length));
+        const item = await obtenerPlantillaBiblioteca(id);
+        if (!item) {
+          enviarJson(res, 404, { error: "plantilla no encontrada" });
+          return;
+        }
+        enviarJson(res, 200, item);
+        return;
+      }
+
+      if (method === "POST" && path === "/api/biblioteca") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          id?: string;
+          nombre?: string;
+          asunto?: string;
+          htmlContent?: string;
+          remitente?: { nombre?: string; email?: string };
+          instrucciones?: string;
+          destino?: string;
+          origen?: "composer" | "borrador" | "manual" | "tema";
+          borradorId?: string;
+        };
+        if (!body.nombre || !body.asunto || !body.htmlContent) {
+          enviarJson(res, 400, {
+            error: "nombre, asunto y htmlContent son requeridos",
+          });
+          return;
+        }
+        const item = await guardarEnBiblioteca({
+          nombre: body.nombre,
+          asunto: body.asunto,
+          htmlContent: body.htmlContent,
+          remitente: {
+            nombre: body.remitente?.nombre ?? "Bodasesor",
+            email: body.remitente?.email ?? "hola@bodasesor.com",
+          },
+          origen: body.origen ?? "composer",
+          ...(body.id !== undefined ? { id: body.id } : {}),
+          ...(body.instrucciones !== undefined
+            ? { instrucciones: body.instrucciones }
+            : {}),
+          ...(body.destino !== undefined ? { destino: body.destino } : {}),
+          ...(body.borradorId !== undefined
+            ? { borradorId: body.borradorId }
+            : {}),
+        });
+        enviarJson(res, body.id ? 200 : 201, item);
+        return;
+      }
+
       if (method === "POST" && path === "/api/borradores") {
         if (!requiereAuth(req, res)) return;
         const body = (await leerJson(req)) as {
@@ -523,11 +661,22 @@ const servidor = http.createServer((req, res) => {
           plantilla.id,
           campana.id,
         );
+        const enBiblioteca = await guardarEnBiblioteca({
+          nombre: borrador.nombre,
+          asunto: borrador.asunto,
+          htmlContent: borrador.htmlContent,
+          remitente: borrador.remitente,
+          origen: "borrador",
+          borradorId: borrador.id,
+          brevoPlantillaId: plantilla.id,
+          brevoCampanaId: campana.id,
+        });
         enviarJson(res, 200, {
           ok: true,
           borrador: actualizado,
           plantillaId: plantilla.id,
           campanaId: campana.id,
+          bibliotecaId: enBiblioteca.id,
         });
         return;
       }
