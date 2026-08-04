@@ -764,7 +764,11 @@ const servidor = http.createServer((req, res) => {
       if (method === "GET" && path === "/gemini/probe") {
         const urlObj = new URL(req.url ?? "/", `http://${req.headers.host}`);
         const ejecutar = urlObj.searchParams.get("ejecutar") === "1";
-        const probe = await probeModelosGemini({ ejecutar });
+        const modeloParam = urlObj.searchParams.get("modelo")?.trim();
+        const probe = await probeModelosGemini({
+          ejecutar,
+          ...(modeloParam ? { modelosTexto: [modeloParam] } : {}),
+        });
         enviarJson(res, 200, probe);
         return;
       }

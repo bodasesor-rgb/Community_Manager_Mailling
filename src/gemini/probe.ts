@@ -88,6 +88,8 @@ export function candidatosImagen(): string[] {
  */
 export async function probeModelosGemini(opciones?: {
   ejecutar?: boolean;
+  /** Si se indica, prueba solo esos modelos de texto (p. ej. comparar precios). */
+  modelosTexto?: string[];
 }): Promise<{
   ejecutado: boolean;
   texto: ProbeModeloResultado[];
@@ -118,7 +120,11 @@ export async function probeModelosGemini(opciones?: {
   }
 
   const texto: ProbeModeloResultado[] = [];
-  for (const modelo of candidatosTexto()) {
+  const modelosTexto =
+    opciones.modelosTexto && opciones.modelosTexto.length > 0
+      ? opciones.modelosTexto
+      : candidatosTexto();
+  for (const modelo of modelosTexto) {
     texto.push(await probeGenerateContent(apiKey, modelo, false));
   }
 
