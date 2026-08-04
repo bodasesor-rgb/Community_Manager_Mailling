@@ -22,6 +22,7 @@ import {
 } from "../sitio/conocimiento.js";
 import { leerReglasComposer } from "../panel/reglas-composer.js";
 import { interpretarReglasEstructura } from "./aplicar-reglas-estructura.js";
+import { asegurarHtmlEmail } from "./verificar-html-email.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -345,10 +346,13 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     .slice(0, 80)
     .trim();
 
+  // Capa 2: no sale borrador inválido al panel ni a Brevo
+  const htmlVerificado = asegurarHtmlEmail(htmlContent);
+
   return {
     asunto,
     nombre,
-    htmlContent,
+    htmlContent: htmlVerificado,
     modeloTexto: generado.modeloTexto,
     destino,
     instrucciones,

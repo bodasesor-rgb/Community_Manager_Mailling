@@ -121,6 +121,11 @@ export function generarPlantillaHtml(input: GenerarPlantillaHtmlInput): string {
           </tr>
           ${bloques}
           <tr>
+            <td style="padding:20px 28px;background:${COLORES_BODASESOR.cream};font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:${COLORES_BODASESOR.navy};">
+              Hola {{ contact.FIRSTNAME }},
+            </td>
+          </tr>
+          <tr>
             <td style="padding:24px 28px;border-top:1px solid #e0d8ce;background:${COLORES_BODASESOR.cream};font-size:12px;line-height:1.5;color:${COLORES_BODASESOR.muted};font-family:Arial,Helvetica,sans-serif;">
               ${pie}
               <br/><br/>

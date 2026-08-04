@@ -4,6 +4,10 @@
  */
 
 import type { GenerarPlantillaHtmlInput } from "../plantillas/generador.js";
+import {
+  BLOQUE_AUTO_VERIFICACION_PROMPT,
+  EJEMPLO_HTML_EMAIL_OK,
+} from "../servicios/verificar-html-email.js";
 import { generarTextoGemini } from "./cliente-texto.js";
 import { generarImagenEmail, type ImagenGenerada } from "./generar-imagen.js";
 
@@ -89,9 +93,17 @@ Reglas:
 - El campo "asunto" DEBE resumir las instrucciones del usuario (destino, oferta, descuento). No uses un asunto genérico.
 - En "productos" puedes listar 8 nombres del catálogo, pero el sistema los reemplazará por URLs reales.
 - Sin emojis. No inventes dominios raros: solo bodasesor.com.
-- Mantén {{ contact.FIRSTNAME }} literal en el saludo.
+- Mantén {{ contact.FIRSTNAME }} literal en el saludo (espaciado exacto).
 - Menciona MAILING10 (10% descuento) en urgencia o saludo.
-- imagePrompt en inglés, fotográfico.`;
+- Si usas placeholders en textos/URLs, SOLO de la lista: [[LOGO]], [[FOTO_HERO]], [[ENLACE_COTIZAR]], [[ENLACE_BLOG]], [[ENLACE_FACEBOOK]], [[ENLACE_INSTAGRAM]], [[ENLACE_WHATSAPP]], [[FOTO_PRODUCTO_1]]…[[FOTO_PRODUCTO_12]].
+- imagePrompt en inglés, fotográfico.
+
+${BLOQUE_AUTO_VERIFICACION_PROMPT}
+
+Ejemplo de correo HTML bien formado (referencia; TÚ NO generas HTML, solo JSON de textos que permitan este resultado):
+\`\`\`
+${EJEMPLO_HTML_EMAIL_OK}
+\`\`\``;
 
   const { modelo, texto } = await generarTextoGemini({
     prompt,

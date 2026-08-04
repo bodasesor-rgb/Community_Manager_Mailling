@@ -5,6 +5,10 @@
  */
 
 import { generarTextoGemini } from "../gemini/cliente-texto.js";
+import {
+  asegurarHtmlEmail,
+  BLOQUE_AUTO_VERIFICACION_PROMPT,
+} from "./verificar-html-email.js";
 
 export interface AjustarEmailInput {
   htmlContent: string;
@@ -50,7 +54,9 @@ function aplicarParches(
     }
     // Solo la primera coincidencia por parche (cambio puntual)
     out = out.replace(buscar, p.reemplazar);
-    aplicados.push(`«${buscar.slice(0, 60)}» → «${String(p.reemplazar).slice(0, 60)}»`);
+    aplicados.push(
+      `«${buscar.slice(0, 60)}» → «${String(p.reemplazar).slice(0, 60)}»`,
+    );
   }
   return { html: out, aplicados, fallidos };
 }
@@ -62,7 +68,7 @@ export async function ajustarEmail(
   if (!mods) {
     throw new Error("Escribe qué quieres modificar");
   }
-  const htmlOriginal = input.htmlContent.trim();
+  const htmlOriginal = asegurarHtmlEmail(input.htmlContent.trim());
   if (!htmlOriginal || htmlOriginal.length < 40) {
     throw new Error("Primero genera un borrador para poder ajustar");
   }
@@ -110,8 +116,13 @@ Reglas OBLIGATORIAS:
 - "buscar" DEBE ser un substring que ya existe en el HTML (copia literal).
 - NUNCA devuelvas el HTML completo.
 - No borres secciones (navbar, logo, blog, productos, descuento, WhatsApp, redes).
+- No toques {{ contact.FIRSTNAME }}, {{ unsubscribe }} ni el <a href="{{ unsubscribe }}">.
+- No introduzcas <div> con flex/grid ni placeholders [[ ]] inventados.
 - Si el usuario pide cambiar asunto/nombre, hazlo en esos campos; no hace falta parche HTML.
-- Sin emojis. Sin markdown.`;
+- Sin emojis. Sin markdown.
+
+${BLOQUE_AUTO_VERIFICACION_PROMPT}
+(En este modo no entregas HTML: los parches deben dejar el mail cumpliendo esa checklist.)`;
 
   const { modelo, texto } = await generarTextoGemini({
     prompt,
@@ -189,8 +200,11 @@ Reglas OBLIGATORIAS:
         ? `Asunto actualizado a «${asunto}».`
         : "Sin cambios detectados.");
 
+  // Capa 2: el mail ajustado debe seguir siendo válido para Brevo
+  const htmlContent = asegurarHtmlEmail(htmlParcheado);
+
   return {
-    htmlContent: htmlParcheado,
+    htmlContent,
     asunto,
     nombre,
     modeloTexto: modelo,

@@ -13,6 +13,7 @@ import {
   generarPlantillaHtml,
   type GenerarPlantillaHtmlInput,
 } from "../plantillas/generador.js";
+import { asegurarHtmlEmail } from "./verificar-html-email.js";
 
 export type ModoEnvio = "plantilla" | "borrador";
 
@@ -56,7 +57,9 @@ export async function crearEnvio(
   input: CrearEnvioInput,
 ): Promise<CrearEnvioResultado> {
   const modo: ModoEnvio = input.modo ?? "plantilla";
-  const htmlContent = generarPlantillaHtml(input.contenido);
+  const htmlContent = asegurarHtmlEmail(
+    generarPlantillaHtml(input.contenido),
+  );
 
   const plantilla = await provider.crearPlantilla({
     nombre: input.nombre,

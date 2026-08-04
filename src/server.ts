@@ -31,6 +31,11 @@ import {
   type CrearEnvioInput,
   type ModoEnvio,
 } from "./servicios/crear-envio.js";
+import {
+  asegurarHtmlEmail,
+  verificarHtmlEmail,
+  HtmlEmailInvalidoError,
+} from "./servicios/verificar-html-email.js";
 import { KommoCrmProvider } from "./kommo-provider.js";
 import { syncContactosKommoBrevo } from "./servicios/sync-kommo-brevo.js";
 import {
@@ -120,6 +125,22 @@ function rutaSinQuery(url: string | undefined): string {
   }
   const q = url.indexOf("?");
   return q >= 0 ? url.slice(0, q) : url;
+}
+
+function enviarError(res: http.ServerResponse, error: unknown, fallback: string): void {
+  if (error instanceof HtmlEmailInvalidoError) {
+    enviarJson(res, 422, {
+      error: error.message,
+      codigo: "html_email_invalido",
+      errores: error.resultado.errores,
+      avisos: error.resultado.avisos,
+      hallazgos: error.resultado.hallazgos,
+    });
+    return;
+  }
+  enviarJson(res, 502, {
+    error: error instanceof Error ? error.message : fallback,
+  });
 }
 
 function requiereAuth(
@@ -480,10 +501,20 @@ const servidor = http.createServer((req, res) => {
           });
           enviarJson(res, 200, resultado);
         } catch (error: unknown) {
-          enviarJson(res, 502, {
-            error: error instanceof Error ? error.message : "composer falló",
-          });
+          enviarError(res, error, "composer falló");
         }
+        return;
+      }
+
+      if (method === "POST" && path === "/api/composer/verificar-html") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as { htmlContent?: string };
+        if (!body.htmlContent?.trim()) {
+          enviarJson(res, 400, { error: "htmlContent es requerido" });
+          return;
+        }
+        const resultado = verificarHtmlEmail(body.htmlContent);
+        enviarJson(res, resultado.ok ? 200 : 422, resultado);
         return;
       }
 
@@ -518,10 +549,7 @@ const servidor = http.createServer((req, res) => {
           });
           enviarJson(res, 200, resultado);
         } catch (error: unknown) {
-          enviarJson(res, 502, {
-            error:
-              error instanceof Error ? error.message : "ajuste del mail falló",
-          });
+          enviarError(res, error, "ajuste del mail falló");
         }
         return;
       }
@@ -690,25 +718,30 @@ const servidor = http.createServer((req, res) => {
           });
           return;
         }
-        const item = await guardarEnBiblioteca({
-          nombre: body.nombre,
-          asunto: body.asunto,
-          htmlContent: body.htmlContent,
-          remitente: {
-            nombre: body.remitente?.nombre ?? "Bodasesor",
-            email: body.remitente?.email ?? "hola@bodasesor.com",
-          },
-          origen: body.origen ?? "composer",
-          ...(body.id !== undefined ? { id: body.id } : {}),
-          ...(body.instrucciones !== undefined
-            ? { instrucciones: body.instrucciones }
-            : {}),
-          ...(body.destino !== undefined ? { destino: body.destino } : {}),
-          ...(body.borradorId !== undefined
-            ? { borradorId: body.borradorId }
-            : {}),
-        });
-        enviarJson(res, body.id ? 200 : 201, item);
+        try {
+          const htmlContent = asegurarHtmlEmail(body.htmlContent);
+          const item = await guardarEnBiblioteca({
+            nombre: body.nombre,
+            asunto: body.asunto,
+            htmlContent,
+            remitente: {
+              nombre: body.remitente?.nombre ?? "Bodasesor",
+              email: body.remitente?.email ?? "hola@bodasesor.com",
+            },
+            origen: body.origen ?? "composer",
+            ...(body.id !== undefined ? { id: body.id } : {}),
+            ...(body.instrucciones !== undefined
+              ? { instrucciones: body.instrucciones }
+              : {}),
+            ...(body.destino !== undefined ? { destino: body.destino } : {}),
+            ...(body.borradorId !== undefined
+              ? { borradorId: body.borradorId }
+              : {}),
+          });
+          enviarJson(res, body.id ? 200 : 201, item);
+        } catch (error: unknown) {
+          enviarError(res, error, "no se pudo guardar en biblioteca");
+        }
         return;
       }
 
@@ -734,17 +767,22 @@ const servidor = http.createServer((req, res) => {
           });
           return;
         }
-        const borrador = await guardarBorrador({
-          ...(body.id ? { id: body.id } : {}),
-          nombre: body.nombre,
-          asunto: body.asunto,
-          htmlContent: body.htmlContent,
-          remitente: {
-            nombre: body.remitente.nombre,
-            email: body.remitente.email,
-          },
-        });
-        enviarJson(res, body.id ? 200 : 201, borrador);
+        try {
+          const htmlContent = asegurarHtmlEmail(body.htmlContent);
+          const borrador = await guardarBorrador({
+            ...(body.id ? { id: body.id } : {}),
+            nombre: body.nombre,
+            asunto: body.asunto,
+            htmlContent,
+            remitente: {
+              nombre: body.remitente.nombre,
+              email: body.remitente.email,
+            },
+          });
+          enviarJson(res, body.id ? 200 : 201, borrador);
+        } catch (error: unknown) {
+          enviarError(res, error, "no se pudo guardar borrador");
+        }
         return;
       }
 
@@ -790,41 +828,45 @@ const servidor = http.createServer((req, res) => {
           });
           return;
         }
-        const plantilla = await provider.crearPlantilla({
-          nombre: borrador.nombre,
-          asunto: borrador.asunto,
-          htmlContent: borrador.htmlContent,
-          remitente: borrador.remitente,
-        });
-        const campana = await provider.crearCampaña({
-          nombre: `${borrador.nombre} (borrador)`,
-          asunto: borrador.asunto,
-          remitente: borrador.remitente,
-          templateId: plantilla.id,
-          listIds,
-        });
-        const actualizado = await marcarAprobado(
-          borrador.id,
-          plantilla.id,
-          campana.id,
-        );
-        const enBiblioteca = await guardarEnBiblioteca({
-          nombre: borrador.nombre,
-          asunto: borrador.asunto,
-          htmlContent: borrador.htmlContent,
-          remitente: borrador.remitente,
-          origen: "borrador",
-          borradorId: borrador.id,
-          brevoPlantillaId: plantilla.id,
-          brevoCampanaId: campana.id,
-        });
-        enviarJson(res, 200, {
-          ok: true,
-          borrador: actualizado,
-          plantillaId: plantilla.id,
-          campanaId: campana.id,
-          bibliotecaId: enBiblioteca.id,
-        });
+        try {
+          const plantilla = await provider.crearPlantilla({
+            nombre: borrador.nombre,
+            asunto: borrador.asunto,
+            htmlContent: borrador.htmlContent,
+            remitente: borrador.remitente,
+          });
+          const campana = await provider.crearCampaña({
+            nombre: `${borrador.nombre} (borrador)`,
+            asunto: borrador.asunto,
+            remitente: borrador.remitente,
+            templateId: plantilla.id,
+            listIds,
+          });
+          const actualizado = await marcarAprobado(
+            borrador.id,
+            plantilla.id,
+            campana.id,
+          );
+          const enBiblioteca = await guardarEnBiblioteca({
+            nombre: borrador.nombre,
+            asunto: borrador.asunto,
+            htmlContent: asegurarHtmlEmail(borrador.htmlContent),
+            remitente: borrador.remitente,
+            origen: "borrador",
+            borradorId: borrador.id,
+            brevoPlantillaId: plantilla.id,
+            brevoCampanaId: campana.id,
+          });
+          enviarJson(res, 200, {
+            ok: true,
+            borrador: actualizado,
+            plantillaId: plantilla.id,
+            campanaId: campana.id,
+            bibliotecaId: enBiblioteca.id,
+          });
+        } catch (error: unknown) {
+          enviarError(res, error, "aprobación falló");
+        }
         return;
       }
 
@@ -989,7 +1031,9 @@ const servidor = http.createServer((req, res) => {
             ? { generarImagen: body.generarImagen }
             : {}),
         });
-        const htmlContent = generarPlantillaHtml(generado.contenido);
+        const htmlContent = asegurarHtmlEmail(
+          generarPlantillaHtml(generado.contenido),
+        );
         enviarJson(res, 200, {
           asunto: generado.asunto,
           modeloTexto: generado.modeloTexto,
@@ -1108,6 +1152,7 @@ const servidor = http.createServer((req, res) => {
 
       /** Genera HTML promocional desde tema de ejemplo o destino libre. */
       if (method === "POST" && path === "/api/plantillas/tema") {
+        try {
         const body = (await leerJson(req)) as {
           tema?: string;
           destino?: string;
@@ -1115,12 +1160,14 @@ const servidor = http.createServer((req, res) => {
         };
         if (body.promocional?.destino && body.promocional.heroTitulo) {
           const base = baseUrlDesdeRequest(req);
-          const htmlContent = generarEmailPromocionalHtml({
-            ...body.promocional,
-            assetsBaseUrl: body.promocional.assetsBaseUrl || base,
-            logoUrl:
-              body.promocional.logoUrl || `${base}/assets/logo-white.png`,
-          });
+          const htmlContent = asegurarHtmlEmail(
+            generarEmailPromocionalHtml({
+              ...body.promocional,
+              assetsBaseUrl: body.promocional.assetsBaseUrl || base,
+              logoUrl:
+                body.promocional.logoUrl || `${base}/assets/logo-white.png`,
+            }),
+          );
           enviarJson(res, 200, {
             htmlContent,
             asunto: `Bodasesor · ${body.promocional.destino}`,
@@ -1138,11 +1185,13 @@ const servidor = http.createServer((req, res) => {
             return;
           }
           const base = baseUrlDesdeRequest(req);
-          const htmlContent = generarEmailPromocionalHtml({
-            ...tema,
-            assetsBaseUrl: base,
-            logoUrl: tema.logoUrl || `${base}/assets/logo-white.png`,
-          });
+          const htmlContent = asegurarHtmlEmail(
+            generarEmailPromocionalHtml({
+              ...tema,
+              assetsBaseUrl: base,
+              logoUrl: tema.logoUrl || `${base}/assets/logo-white.png`,
+            }),
+          );
           enviarJson(res, 200, {
             htmlContent,
             asunto: `Bodasesor · ${tema.destino}`,
@@ -1154,13 +1203,15 @@ const servidor = http.createServer((req, res) => {
         if (body.destino?.trim()) {
           const destino = body.destino.trim();
           const base = baseUrlDesdeRequest(req);
-          const htmlContent = generarEmailPromocionalHtml({
-            destino,
-            heroTitulo: `${destino} te espera para celebrar`,
-            heroSubtitulo: "Experiencias Bodasesor pensadas para tu evento",
-            assetsBaseUrl: base,
-            logoUrl: `${base}/assets/logo-white.png`,
-          });
+          const htmlContent = asegurarHtmlEmail(
+            generarEmailPromocionalHtml({
+              destino,
+              heroTitulo: `${destino} te espera para celebrar`,
+              heroSubtitulo: "Experiencias Bodasesor pensadas para tu evento",
+              assetsBaseUrl: base,
+              logoUrl: `${base}/assets/logo-white.png`,
+            }),
+          );
           enviarJson(res, 200, {
             htmlContent,
             asunto: `Bodasesor · ${destino}`,
@@ -1171,6 +1222,9 @@ const servidor = http.createServer((req, res) => {
         enviarJson(res, 400, {
           error: "Indica tema, destino o promocional completo",
         });
+        } catch (error: unknown) {
+          enviarError(res, error, "tema HTML inválido");
+        }
         return;
       }
 
@@ -1190,13 +1244,17 @@ const servidor = http.createServer((req, res) => {
           });
           return;
         }
-        const resultado = await provider.crearPlantilla({
-          nombre: body.nombre,
-          asunto: body.asunto,
-          htmlContent: body.htmlContent,
-          remitente,
-        });
-        enviarJson(res, 201, resultado);
+        try {
+          const resultado = await provider.crearPlantilla({
+            nombre: body.nombre,
+            asunto: body.asunto,
+            htmlContent: body.htmlContent,
+            remitente,
+          });
+          enviarJson(res, 201, resultado);
+        } catch (error: unknown) {
+          enviarError(res, error, "crear plantilla falló");
+        }
         return;
       }
 

@@ -9,6 +9,7 @@ import {
   JsonSupresionStore,
   type SupresionStore,
 } from "./supresion/index.js";
+import { asegurarHtmlEmail } from "./servicios/verificar-html-email.js";
 
 // ---------------------------------------------------------------------------
 // Tipos públicos (contrato de la interfaz)
@@ -319,13 +320,14 @@ export class BrevoProvider implements EmailProvider {
 
   /** Crea plantilla SMTP. htmlContent ya viene generado. */
   async crearPlantilla(input: CrearPlantillaInput): Promise<IdResultado> {
+    const htmlContent = asegurarHtmlEmail(input.htmlContent);
     const respuesta = await this.request<BrevoIdResponse>(
       "POST",
       "/smtp/templates",
       {
         templateName: input.nombre,
         subject: input.asunto,
-        htmlContent: input.htmlContent,
+        htmlContent,
         sender: {
           name: input.remitente.nombre,
           email: input.remitente.email,
@@ -351,7 +353,7 @@ export class BrevoProvider implements EmailProvider {
       payload.subject = input.asunto;
     }
     if (input.htmlContent !== undefined) {
-      payload.htmlContent = input.htmlContent;
+      payload.htmlContent = asegurarHtmlEmail(input.htmlContent);
     }
     if (input.remitente !== undefined) {
       payload.sender = {
@@ -393,7 +395,7 @@ export class BrevoProvider implements EmailProvider {
     if (input.templateId !== undefined) {
       payload.templateId = input.templateId;
     } else if (input.htmlContent !== undefined) {
-      payload.htmlContent = input.htmlContent;
+      payload.htmlContent = asegurarHtmlEmail(input.htmlContent);
     }
 
     if (input.scheduledAt !== undefined) {

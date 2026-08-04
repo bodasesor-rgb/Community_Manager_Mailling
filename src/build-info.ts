@@ -2,5 +2,5 @@
  * Generado en cada `npm run build`. No editar a mano.
  * Marca la versión desplegada en Hostinger.
  */
-export const BUILD_ISO = "2026-08-04T05:55:53.739Z";
-export const BUILD_LABEL = "3 ago 2026, 23:55";
+export const BUILD_ISO = "2026-08-04T06:08:13.353Z";
+export const BUILD_LABEL = "4 ago 2026, 00:08";
