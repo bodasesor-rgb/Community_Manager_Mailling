@@ -27,6 +27,19 @@ import {
   type CrearEnvioInput,
   type ModoEnvio,
 } from "./servicios/crear-envio.js";
+import { KommoCrmProvider } from "./kommo-provider.js";
+import { syncContactosKommoBrevo } from "./servicios/sync-kommo-brevo.js";
+import {
+  guardarBorrador,
+  listarBorradores,
+  marcarAprobado,
+  obtenerBorrador,
+} from "./panel/borradores-store.js";
+import {
+  paginaContactosHtml,
+  paginaInicioHtml,
+  paginaPlantillasHtml,
+} from "./panel/html.js";
 
 const puerto = Number(process.env.PORT ?? 3000);
 const provider: EmailProvider = new BrevoProvider();
@@ -138,17 +151,52 @@ function baseUrlDesdeRequest(req: http.IncomingMessage): string {
   return `${proto}://${host}`.replace(/\/+$/, "");
 }
 
+function enviarHtml(res: http.ServerResponse, html: string): void {
+  res.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+  });
+  res.end(html);
+}
+
+function parseListIdsEnv(): number[] | undefined {
+  const raw = process.env.BREVO_DEFAULT_LIST_IDS;
+  if (!raw) {
+    return undefined;
+  }
+  const ids = raw
+    .split(",")
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return ids.length > 0 ? ids : undefined;
+}
+
 const servidor = http.createServer((req, res) => {
   void (async () => {
     const method = req.method ?? "GET";
     const path = rutaSinQuery(req.url);
 
     try {
-      if (method === "GET" && (path === "/" || path === "/health")) {
+      // ---- Panel HTML (lo que se ve en el navegador) ----
+      if (method === "GET" && (path === "/" || path === "/panel")) {
+        enviarHtml(res, paginaInicioHtml());
+        return;
+      }
+      if (method === "GET" && path === "/panel/contactos") {
+        enviarHtml(res, paginaContactosHtml());
+        return;
+      }
+      if (method === "GET" && path === "/panel/plantillas") {
+        enviarHtml(res, paginaPlantillasHtml());
+        return;
+      }
+
+      if (method === "GET" && path === "/health") {
         enviarJson(res, 200, {
           ok: true,
           servicio: "Community Manager Mailling",
           provider: "brevo",
+          panel: "/panel",
           modelos: {
             texto: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
             imagenPredict: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
@@ -159,10 +207,152 @@ const servidor = http.createServer((req, res) => {
             brevo: Boolean(process.env.BREVO_API_KEY),
             gemini: Boolean(process.env.GEMINI_API_KEY),
             kommo: Boolean(
-              process.env.KOMMO_BASE_URL && process.env.KOMMO_CLAVE_SECRETA,
+              (process.env.KOMMO_SUBDOMAIN || process.env.KOMMO_BASE_URL) &&
+                (process.env.KOMMO_TOKEN ||
+                  process.env.KOMMO_CLAVE_SECRETA ||
+                  process.env.KOMMO_ACCESS_TOKEN),
             ),
           },
           authRequerida: Boolean(serviceApiKey),
+        });
+        return;
+      }
+
+      // ---- APIs del panel ----
+      if (
+        (method === "POST" || method === "GET") &&
+        path === "/api/sync-contactos"
+      ) {
+        if (method === "POST" && !requiereAuth(req, res)) return;
+        const url = new URL(req.url ?? "/", "http://localhost");
+        const body =
+          method === "POST"
+            ? ((await leerJson(req)) as { dryRun?: boolean; listIds?: number[] })
+            : {};
+        const dryRun =
+          body.dryRun === true ||
+          url.searchParams.get("dryRun") === "true" ||
+          (method === "GET" && url.searchParams.get("dryRun") !== "false");
+        const listIds = body.listIds ?? parseListIdsEnv();
+        const reporte = await syncContactosKommoBrevo(
+          new KommoCrmProvider(),
+          provider,
+          {
+            dryRun,
+            ...(listIds ? { listIds } : {}),
+          },
+        );
+        enviarJson(res, 200, reporte);
+        return;
+      }
+
+      if (method === "GET" && path === "/api/borradores") {
+        const borradores = await listarBorradores();
+        enviarJson(res, 200, { total: borradores.length, borradores });
+        return;
+      }
+
+      if (method === "POST" && path === "/api/borradores") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          id?: string;
+          nombre?: string;
+          asunto?: string;
+          htmlContent?: string;
+          remitente?: { nombre?: string; email?: string };
+        };
+        if (
+          !body.nombre ||
+          !body.asunto ||
+          !body.htmlContent ||
+          !body.remitente?.nombre ||
+          !body.remitente?.email
+        ) {
+          enviarJson(res, 400, {
+            error:
+              "nombre, asunto, htmlContent y remitente.{nombre,email} son requeridos",
+          });
+          return;
+        }
+        const borrador = await guardarBorrador({
+          ...(body.id ? { id: body.id } : {}),
+          nombre: body.nombre,
+          asunto: body.asunto,
+          htmlContent: body.htmlContent,
+          remitente: {
+            nombre: body.remitente.nombre,
+            email: body.remitente.email,
+          },
+        });
+        enviarJson(res, body.id ? 200 : 201, borrador);
+        return;
+      }
+
+      if (method === "GET" && path.startsWith("/api/borradores/")) {
+        const id = decodeURIComponent(path.slice("/api/borradores/".length));
+        const borrador = await obtenerBorrador(id);
+        if (!borrador) {
+          enviarJson(res, 404, { error: "no encontrado" });
+          return;
+        }
+        enviarJson(res, 200, borrador);
+        return;
+      }
+
+      if (method === "POST" && path === "/api/plantillas/aprobar") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          borradorId?: string;
+          listIds?: number[];
+        };
+        if (!body.borradorId) {
+          enviarJson(res, 400, { error: "borradorId es requerido" });
+          return;
+        }
+        const borrador = await obtenerBorrador(body.borradorId);
+        if (!borrador) {
+          enviarJson(res, 404, { error: "borrador no encontrado" });
+          return;
+        }
+        if (borrador.estado === "aprobado") {
+          enviarJson(res, 409, {
+            error: "ya aprobado",
+            brevoPlantillaId: borrador.brevoPlantillaId,
+            brevoCampanaId: borrador.brevoCampanaId,
+          });
+          return;
+        }
+        const listIds = body.listIds ?? parseListIdsEnv();
+        if (!listIds?.length) {
+          enviarJson(res, 400, {
+            error:
+              "listIds requerido (campo del form o BREVO_DEFAULT_LIST_IDS)",
+          });
+          return;
+        }
+        const plantilla = await provider.crearPlantilla({
+          nombre: borrador.nombre,
+          asunto: borrador.asunto,
+          htmlContent: borrador.htmlContent,
+          remitente: borrador.remitente,
+        });
+        const campana = await provider.crearCampaña({
+          nombre: `${borrador.nombre} (borrador)`,
+          asunto: borrador.asunto,
+          remitente: borrador.remitente,
+          templateId: plantilla.id,
+          listIds,
+        });
+        const actualizado = await marcarAprobado(
+          borrador.id,
+          plantilla.id,
+          campana.id,
+        );
+        enviarJson(res, 200, {
+          ok: true,
+          borrador: actualizado,
+          plantillaId: plantilla.id,
+          campanaId: campana.id,
         });
         return;
       }
@@ -653,18 +843,6 @@ const servidor = http.createServer((req, res) => {
     }
   })();
 });
-
-function parseListIdsEnv(): number[] | undefined {
-  const raw = process.env.BREVO_DEFAULT_LIST_IDS;
-  if (!raw) {
-    return undefined;
-  }
-  const ids = raw
-    .split(",")
-    .map((s) => Number(s.trim()))
-    .filter((n) => Number.isFinite(n) && n > 0);
-  return ids.length > 0 ? ids : undefined;
-}
 
 servidor.listen(puerto, () => {
   console.log(`Servidor escuchando en puerto ${puerto}`);
