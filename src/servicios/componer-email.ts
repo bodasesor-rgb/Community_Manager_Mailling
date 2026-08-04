@@ -287,9 +287,7 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
       ? { heroSubtitulo: promo.heroSubtitulo }
       : {}),
     saludo,
-    ctaTexto: promo.ctaTexto?.toLowerCase().includes("whatsapp")
-      ? promo.ctaTexto
-      : `WhatsApp · ${promo.ctaTexto || "Cotizar mi evento"}`,
+    ctaTexto: "Cotiza por WhatsApp",
     ctaUrl,
     blog,
     productos,
@@ -314,7 +312,7 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
       ? logoRes.item.urlPublica.startsWith("http")
         ? logoRes.item.urlPublica
         : `${input.baseUrl}${logoRes.item.urlPublica.startsWith("/") ? "" : "/"}${logoRes.item.urlPublica}`
-      : `${input.baseUrl}/assets/logo-white.png`,
+      : `${input.baseUrl}/assets/logo-navy.png`,
     ...(heroItem ? { heroFoto: heroItem.urlPublica } : {}),
   });
 

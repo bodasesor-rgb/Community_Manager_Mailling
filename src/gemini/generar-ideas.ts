@@ -30,7 +30,7 @@ const ENFOQUES = [
   "paquete all-in-one",
   "after party / welcome dinner",
   "estilo editorial / revista",
-  "código MAILING10 y urgencia de reserva",
+  "código MAILING5 y urgencia de reserva",
   "galería real / before-after del montaje",
   "menú degustación / barras de bebidas",
   "wedding planner integral",

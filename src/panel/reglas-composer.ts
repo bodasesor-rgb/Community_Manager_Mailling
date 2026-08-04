@@ -33,18 +33,29 @@ export const REGLAS_DEFAULT = `ORDEN OBLIGATORIO DEL CORREO (igual que la web Bo
    - Con imagen si hay y botón «Ver servicio».
 
 4) DESCUENTO MAILING
-   - Código: MAILING10
-   - 10% de descuento, bloque visible y claro.
+   - Código: MAILING5
+   - 5% de descuento, bloque visible y claro.
 
 5) CONTACTO
-   - Botón WhatsApp para cotizar + redes si existen.
+   - Botón «Cotiza por WhatsApp» + redes en silueta.
 
-IMPORTANTE: esta estructura la arma el sistema siempre; la IA solo escribe textos (asunto, saludo, CTA).
-No omitas navbar, blog, 8 productos ni el código MAILING10.`;
+IMPORTANTE: esta estructura la arma el sistema siempre; la IA solo escribe textos (asunto, saludo).
+No omitas navbar, blog, 8 productos ni el código MAILING5.
+El CTA principal debe decir exactamente «Cotiza por WhatsApp» (no «Agendar llamada»).`;
 
 async function archivo(): Promise<string> {
   await asegurarPersistencia();
   return rutasPersistencia().reglas;
+}
+
+/** Migra reglas antiguas MAILING10/10% → MAILING5/5%. */
+function migrarDescuentoSiAplica(texto: string): string {
+  let t = texto;
+  if (/MAILING10/i.test(t) && /10%\s*de descuento/i.test(t)) {
+    t = t.replace(/MAILING10/gi, "MAILING5");
+    t = t.replace(/10%\s*de descuento/gi, "5% de descuento");
+  }
+  return t;
 }
 
 export async function leerReglasComposer(): Promise<ReglasComposer> {
@@ -53,8 +64,12 @@ export async function leerReglasComposer(): Promise<ReglasComposer> {
     const raw = await fs.readFile(ruta, "utf8");
     const parsed = JSON.parse(raw) as Partial<ReglasComposer>;
     if (typeof parsed.texto === "string") {
+      const texto = migrarDescuentoSiAplica(parsed.texto);
+      if (texto !== parsed.texto) {
+        return guardarReglasComposer(texto);
+      }
       return {
-        texto: parsed.texto,
+        texto,
         actualizadoEn:
           parsed.actualizadoEn ?? new Date().toISOString(),
       };

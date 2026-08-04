@@ -32,7 +32,7 @@ function layout(titulo: string, activo: PaginaActiva, cuerpo: string): string {
       --ok-bg:#eaf1f8;
       --ok-line:#c5d6ea;
       --stat:#e8eef6;
-      --wa:#25D366;
+      --wa:#128C7E;
       --shadow:0 14px 36px rgba(20,50,92,.10);
     }
     *{box-sizing:border-box}
@@ -836,21 +836,38 @@ export function paginaCrearHtml(): string {
       let preview = document.getElementById('preview');
       function setMsg(ok, text){ msg.innerHTML = '<div class="' + (ok?'ok':'err') + '">' + escapeHtml(text) + '</div>'; }
       function escapeHtml(s){return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
-      /** Recarga forzada del iframe (srcdoc doble en el mismo tick a veces no pinta). */
+      /** Recarga forzada de la previsualizacion (nuevo iframe + write + srcdoc). */
       function setPreviewHtml(html) {
         const htmlSeguro = html || '';
+        var marca = '<!-- preview ' + Date.now() + ' -->';
+        var conMarca = htmlSeguro;
+        var idxHead = htmlSeguro.toLowerCase().indexOf('</head>');
+        if (idxHead >= 0) {
+          conMarca = htmlSeguro.slice(0, idxHead) + marca + htmlSeguro.slice(idxHead);
+        }
         document.getElementById('htmlContent').value = htmlSeguro;
         ultimoHtml = htmlSeguro;
-        const padre = preview.parentNode;
+        const wrap = preview.parentNode;
         const neu = document.createElement('iframe');
         neu.id = 'preview';
         neu.title = 'Vista previa';
-        padre.replaceChild(neu, preview);
+        neu.setAttribute('data-ts', String(Date.now()));
+        wrap.replaceChild(neu, preview);
         preview = neu;
-        // Asignar en el siguiente frame para forzar repaint real
-        requestAnimationFrame(function() {
-          preview.srcdoc = htmlSeguro;
-        });
+        wrap.style.outline = '2px solid #3d6ea5';
+        setTimeout(function(){ wrap.style.outline = ''; }, 900);
+        setTimeout(function() {
+          try { preview.srcdoc = conMarca || htmlSeguro; } catch (e1) {}
+          try {
+            var doc = preview.contentDocument || (preview.contentWindow && preview.contentWindow.document);
+            if (doc) {
+              doc.open();
+              doc.write(conMarca || htmlSeguro);
+              doc.close();
+            }
+          } catch (e2) {}
+        }, 40);
+        try { preview.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e3) {}
       }
       function fmtEta(seg){
         const s = Math.max(0, Math.ceil(seg));

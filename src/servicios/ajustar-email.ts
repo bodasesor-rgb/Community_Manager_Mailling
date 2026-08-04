@@ -148,7 +148,7 @@ function extraerCampos(html: string): CamposVisibles {
       /<a\b[^>]*(?:whatsapp|cotizar|api\.whatsapp)[^>]*>([\s\S]*?)<\/a>/i,
     ) ||
     html.match(
-      /<a\b[^>]*style="[^"]*background:#25D366[^"]*"[^>]*>([\s\S]*?)<\/a>/i,
+      /<a\b[^>]*style="[^"]*background:#128C7E[^"]*"[^>]*>([\s\S]*?)<\/a>/i,
     );
   const ctaTexto = plainDeHtml(ctaMatch?.[1] || "");
 
@@ -242,17 +242,17 @@ function reemplazarCodigo(html: string, nuevoCodigo: string): string {
 
 function reemplazarCtaTexto(html: string, nuevo: string): string {
   const safe = escaparHtmlTexto(nuevo.trim());
-  const reWa =
-    /(<a\b[^>]*(?:whatsapp|api\.whatsapp)[^>]*>)([\s\S]*?)(<\/a>)/i;
-  if (reWa.test(html)) {
-    return html.replace(reWa, `$1${safe.replace(/\$/g, "$$$$")}$3`);
-  }
-  const reGreen =
-    /(<a\b[^>]*style="[^"]*background:#25D366[^"]*"[^>]*>)([\s\S]*?)(<\/a>)/i;
-  if (reGreen.test(html)) {
-    return html.replace(reGreen, `$1${safe.replace(/\$/g, "$$$$")}$3`);
-  }
-  return html;
+  // Conserva el icono <img> del botón si existe
+  const re =
+    /(<a\b[^>]*(?:whatsapp|api\.whatsapp|#128C7E|#25D366)[^>]*>)([\s\S]*?)(<\/a>)/i;
+  if (!re.test(html)) return html;
+  return html.replace(re, (_full, open: string, inner: string, close: string) => {
+    const icon = inner.match(/<img\b[^>]*>/i)?.[0] || "";
+    const cuerpo = icon
+      ? `${icon}<span style="vertical-align:middle;">${safe}</span>`
+      : safe;
+    return `${open}${cuerpo}${close}`;
+  });
 }
 
 function reemplazarUrgencia(html: string, nuevo: string): string {

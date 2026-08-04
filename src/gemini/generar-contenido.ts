@@ -71,7 +71,7 @@ Devuelve SOLO un JSON válido (sin markdown) con esta forma exacta:
   "apoyo": "subtítulo hero corto",
   "destino": "ciudad o tema principal",
   "saludo": "2-3 frases. Debe incluir exactamente {{ contact.FIRSTNAME }} al inicio",
-  "ctaTexto": "texto del botón (ej. Cotizar mi evento)",
+  "ctaTexto": "Cotiza por WhatsApp",
   "productos": [
     { "titulo": "servicio 1", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
     { "titulo": "servicio 2", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
@@ -82,19 +82,20 @@ Devuelve SOLO un JSON válido (sin markdown) con esta forma exacta:
     { "titulo": "servicio 7", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
     { "titulo": "servicio 8", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." }
   ],
-  "urgencia": "frase corta que mencione el código MAILING10 (10% descuento)",
+  "urgencia": "frase corta que mencione el código MAILING5 (5% descuento)",
   "pie": "texto legal corto de comunidad",
   "imagePrompt": "English visual prompt for a tasteful wedding/event hero photo, no text in the image"
 }
 
 Reglas:
-- La ESTRUCTURA del HTML (navbar, logo, blog, 8 productos, código MAILING10) la arma otro módulo; tú solo escribes textos.
+- La ESTRUCTURA del HTML (navbar, logo, blog, 8 productos, código MAILING5) la arma otro módulo; tú solo escribes textos.
 - Interpreta el brief como pedidos en palabras normales (qué contar, a quién, qué ofrecer).
 - El campo "asunto" DEBE resumir las instrucciones del usuario (destino, oferta, descuento). No uses un asunto genérico.
 - En "productos" puedes listar 8 nombres del catálogo, pero el sistema los reemplazará por URLs reales.
 - Sin emojis. No inventes dominios raros: solo bodasesor.com.
 - Mantén {{ contact.FIRSTNAME }} literal en el saludo (espaciado exacto).
-- Menciona MAILING10 (10% descuento) en urgencia o saludo.
+- Menciona MAILING5 (5% descuento) en urgencia o saludo.
+- El CTA debe ser exactamente «Cotiza por WhatsApp» (nunca «Agendar llamada»).
 - Si usas placeholders en textos/URLs, SOLO de la lista: [[LOGO]], [[FOTO_HERO]], [[ENLACE_COTIZAR]], [[ENLACE_BLOG]], [[ENLACE_FACEBOOK]], [[ENLACE_INSTAGRAM]], [[ENLACE_WHATSAPP]], [[FOTO_PRODUCTO_1]]…[[FOTO_PRODUCTO_12]].
 - imagePrompt en inglés, fotográfico.
 

@@ -1097,7 +1097,7 @@ const servidor = http.createServer((req, res) => {
           const htmlContent = generarEmailPromocionalHtml({
             ...tema,
             assetsBaseUrl: base,
-            logoUrl: tema.logoUrl || `${base}/assets/logo-white.png`,
+            logoUrl: tema.logoUrl || `${base}/assets/logo-navy.png`,
           });
           enviarJson(res, 200, {
             htmlContent,
@@ -1165,7 +1165,7 @@ const servidor = http.createServer((req, res) => {
               ...body.promocional,
               assetsBaseUrl: body.promocional.assetsBaseUrl || base,
               logoUrl:
-                body.promocional.logoUrl || `${base}/assets/logo-white.png`,
+                body.promocional.logoUrl || `${base}/assets/logo-navy.png`,
             }),
           );
           enviarJson(res, 200, {
@@ -1189,7 +1189,7 @@ const servidor = http.createServer((req, res) => {
             generarEmailPromocionalHtml({
               ...tema,
               assetsBaseUrl: base,
-              logoUrl: tema.logoUrl || `${base}/assets/logo-white.png`,
+              logoUrl: tema.logoUrl || `${base}/assets/logo-navy.png`,
             }),
           );
           enviarJson(res, 200, {
@@ -1209,7 +1209,7 @@ const servidor = http.createServer((req, res) => {
               heroTitulo: `${destino} te espera para celebrar`,
               heroSubtitulo: "Experiencias Bodasesor pensadas para tu evento",
               assetsBaseUrl: base,
-              logoUrl: `${base}/assets/logo-white.png`,
+              logoUrl: `${base}/assets/logo-navy.png`,
             }),
           );
           enviarJson(res, 200, {

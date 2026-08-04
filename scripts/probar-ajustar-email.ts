@@ -16,7 +16,7 @@ const HTML = `<!DOCTYPE html>
   <p style="margin:0;color:#1a2744;">{{ contact.FIRSTNAME }}, es un placer saludarte. En Bodasesor te acompañamos.</p>
 </td></tr>
 <tr><td align="center" style="padding:8px 32px;background:#f5f0ea;">
-  <a href="https://api.whatsapp.com/send?phone=5215540080373" style="background:#25D366;color:#fff;">WhatsApp · Cotizar mi evento</a>
+  <a href="https://api.whatsapp.com/send?phone=5215540080373" style="background:#128C7E;color:#fff;">WhatsApp · Cotizar mi evento</a>
 </td></tr>
 <tr><td style="padding:20px;background:#1a2744;">
   <p style="color:#fff;">Usa el código MAILING10: 10% de descuento.</p>
