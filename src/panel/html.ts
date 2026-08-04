@@ -1107,10 +1107,15 @@ export function paginaCrearHtml(): string {
           if (mismoHtml && mismoAsunto) {
             throw new Error('No hubo cambio real en el correo. Reformula el pedido, ej. «Cambia el titular a: …».');
           }
-          // Diff visible rápido (titular) para que el usuario vea qué cambió
+          // Diff visible rápido (titular) — sin regex (el HTML va en template literal TS)
           const h1De = (h) => {
-            const m = String(h).match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
-            return m ? m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() : '';
+            const s = String(h);
+            const a = s.toLowerCase().indexOf('<h1');
+            if (a < 0) return '';
+            const gt = s.indexOf('>', a);
+            const b = s.toLowerCase().indexOf('</h1>', gt);
+            if (gt < 0 || b < 0) return '';
+            return s.slice(gt + 1, b).replace(/<[^>]+>/g, ' ').replace(/ +/g, ' ').trim();
           };
           const h1Antes = h1De(htmlAntes);
           const h1Nuevo = h1De(htmlNuevo);
