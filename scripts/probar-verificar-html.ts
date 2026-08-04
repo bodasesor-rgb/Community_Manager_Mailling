@@ -6,6 +6,8 @@
 import assert from "node:assert/strict";
 import {
   asegurarHtmlEmail,
+  BREVO_FIRSTNAME,
+  BREVO_UNSUBSCRIBE,
   EJEMPLO_HTML_EMAIL_OK,
   limpiarEnvoltorioHtml,
   verificarHtmlEmail,
@@ -23,6 +25,7 @@ console.log("verificar-html-email");
 {
   const r = verificarHtmlEmail(EJEMPLO_HTML_EMAIL_OK);
   ok("ejemplo referencia pasa", r.ok);
+  ok("sin auto-fixes innecesarios", r.avisos.length === 0);
 }
 
 {
@@ -56,26 +59,70 @@ console.log("verificar-html-email");
     "Aquí el mail:\n```html\n" + EJEMPLO_HTML_EMAIL_OK + "\n```\nlisto";
   const { limpio } = limpiarEnvoltorioHtml(wrapped);
   ok("limpia fence markdown", limpio);
-  ok("wrapped pasa tras limpia", verificarHtmlEmail(wrapped).ok);
-}
-
-{
-  const bad = EJEMPLO_HTML_EMAIL_OK.replaceAll("{{ unsubscribe }}", "#out");
-  const r = verificarHtmlEmail(bad);
-  ok("rechaza sin unsubscribe", !r.ok);
+  const r = verificarHtmlEmail(wrapped);
+  ok("wrapped pasa tras limpia", r.ok);
   ok(
-    "mensaje unsubscribe",
-    r.errores.some((e) => e.includes("unsubscribe")),
+    "aviso auto-fix envoltorio",
+    r.avisos.some((a) => /envolvente|markdown/i.test(a)),
   );
 }
 
 {
+  // Auto-repara variante mal espaciada de FIRSTNAME
   const bad = EJEMPLO_HTML_EMAIL_OK.replace(
-    "{{ contact.FIRSTNAME }}",
+    BREVO_FIRSTNAME,
     "{{contact.FIRSTNAME}}",
   );
   const r = verificarHtmlEmail(bad);
-  ok("rechaza FIRSTNAME sin espacios exactos", !r.ok);
+  ok("auto-repara FIRSTNAME spacing", r.ok && r.html.includes(BREVO_FIRSTNAME));
+  ok(
+    "aviso repair firstname",
+    r.hallazgos.some((h) => h.codigo === "brevo-var"),
+  );
+}
+
+{
+  // Auto-repara variante mal espaciada de unsubscribe
+  const bad = EJEMPLO_HTML_EMAIL_OK.replace(
+    BREVO_UNSUBSCRIBE,
+    "{{unsubscribe}}",
+  );
+  const r = verificarHtmlEmail(bad);
+  ok(
+    "auto-repara unsubscribe spacing",
+    r.ok && r.html.includes(`href="${BREVO_UNSUBSCRIBE}"`),
+  );
+}
+
+{
+  // Auto-repara img sin alt
+  const bad = EJEMPLO_HTML_EMAIL_OK.replace('alt="Bodasesor Eventos"', "");
+  const r = verificarHtmlEmail(bad);
+  ok("auto-repara img sin alt", r.ok);
+  ok(
+    "aviso repair alt",
+    r.hallazgos.some((h) => h.codigo === "img-alt" && h.severidad === "auto-fix"),
+  );
+}
+
+{
+  // Auto-inserta unsubscribe si falta
+  const bad = EJEMPLO_HTML_EMAIL_OK.replaceAll(BREVO_UNSUBSCRIBE, "#out").replace(
+    /<a href="#out"[^>]*>Cancelar suscripción<\/a>/,
+    "",
+  );
+  const r = verificarHtmlEmail(bad);
+  ok(
+    "auto-inserta unsubscribe link",
+    r.ok && r.html.includes(`href="${BREVO_UNSUBSCRIBE}"`),
+  );
+}
+
+{
+  // Auto-inserta FIRSTNAME si falta
+  const bad = EJEMPLO_HTML_EMAIL_OK.replaceAll(BREVO_FIRSTNAME, "cliente");
+  const r = verificarHtmlEmail(bad);
+  ok("auto-inserta FIRSTNAME", r.ok && r.html.includes(BREVO_FIRSTNAME));
 }
 
 {
@@ -94,22 +141,13 @@ console.log("verificar-html-email");
 }
 
 {
-  const bad = EJEMPLO_HTML_EMAIL_OK.replace(
-    'alt="Bodasesor Eventos"',
-    "",
-  );
-  const r = verificarHtmlEmail(bad);
-  ok("rechaza img sin alt", !r.ok);
-}
-
-{
   let lanzo = false;
   try {
     asegurarHtmlEmail("<p>hola</p>");
   } catch {
     lanzo = true;
   }
-  ok("asegurar lanza si inválido", lanzo);
+  ok("asegurar lanza si inválido irreparable", lanzo);
 }
 
 console.log("todas las pruebas OK");

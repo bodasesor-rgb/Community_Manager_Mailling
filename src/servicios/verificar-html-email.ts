@@ -1,7 +1,7 @@
 /**
  * Capa 2: verificador determinista de HTML de email (Brevo).
- * No depende del modelo: limpia envoltorios, valida lo no-negociable
- * y rechaza o auto-corrige antes de guardar / enviar a Brevo.
+ * Limpia envoltorios, auto-repara fallos seguros y rechaza lo no negociable
+ * antes de guardar / enviar a Brevo.
  */
 
 /** Placeholders [[ ]] permitidos en plantillas Bodasesor. */
@@ -101,6 +101,10 @@ export const EJEMPLO_HTML_EMAIL_OK = `<!DOCTYPE html>
 </body>
 </html>`;
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 /**
  * Quita fences markdown y basura envolvente alrededor del HTML.
  */
@@ -111,8 +115,9 @@ export function limpiarEnvoltorioHtml(entrada: string): {
   let html = (entrada || "").replace(/^\uFEFF/, "").trim();
   let limpio = false;
 
-  // ```html ... ``` o ``` ... ```
-  const fence = html.match(/^```(?:html|HTML)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/);
+  const fence = html.match(
+    /^```(?:html|HTML)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/,
+  );
   if (fence?.[1]) {
     html = fence[1].trim();
     limpio = true;
@@ -124,19 +129,20 @@ export function limpiarEnvoltorioHtml(entrada: string): {
     limpio = true;
   }
 
-  // Prefacio tipo "Aquí tienes el correo:" antes del doctype/table
+  const startDoctype = html.search(/<!DOCTYPE\s+html/i);
+  const startHtml = html.search(/<html[\s>]/i);
+  const startTable = html.search(/<table[\s>]/i);
   const start =
-    html.search(/<!DOCTYPE\s+html/i) >= 0
-      ? html.search(/<!DOCTYPE\s+html/i)
-      : html.search(/<html[\s>]/i) >= 0
-        ? html.search(/<html[\s>]/i)
-        : html.search(/<table[\s>]/i);
+    startDoctype >= 0
+      ? startDoctype
+      : startHtml >= 0
+        ? startHtml
+        : startTable;
   if (start > 0) {
     html = html.slice(start).trim();
     limpio = true;
   }
 
-  // Epílogo tras </html>
   const endHtml = html.toLowerCase().lastIndexOf("</html>");
   if (endHtml >= 0) {
     const after = html.slice(endHtml + "</html>".length).trim();
@@ -149,6 +155,127 @@ export function limpiarEnvoltorioHtml(entrada: string): {
   return { html, limpio };
 }
 
+/** Normaliza variantes de variables Brevo al espaciado exacto. */
+function normalizarVarsBrevo(html: string): { html: string; cambios: string[] } {
+  const cambios: string[] = [];
+  let out = html;
+
+  const firstVariants = [
+    /\{\{\s*contact\.FIRSTNAME\s*\}\}/gi,
+    /\{\{\s*contact\.firstname\s*\}\}/gi,
+    /\{\{\s*CONTACT\.FIRSTNAME\s*\}\}/g,
+  ];
+  for (const re of firstVariants) {
+    if (re.test(out) && !out.includes(BREVO_FIRSTNAME)) {
+      out = out.replace(re, BREVO_FIRSTNAME);
+      cambios.push(`normalizó variable a ${BREVO_FIRSTNAME}`);
+      break;
+    }
+    // Also fix if wrong spacing exists alongside - replace all variants
+  }
+  if (/\{\{\s*contact\.FIRSTNAME\s*\}\}/i.test(out)) {
+    const antes = out;
+    out = out.replace(/\{\{\s*contact\.FIRSTNAME\s*\}\}/gi, BREVO_FIRSTNAME);
+    if (out !== antes && !cambios.length) {
+      cambios.push(`normalizó variable a ${BREVO_FIRSTNAME}`);
+    }
+  }
+
+  if (/\{\{\s*unsubscribe\s*\}\}/i.test(out)) {
+    const antes = out;
+    out = out.replace(/\{\{\s*unsubscribe\s*\}\}/gi, BREVO_UNSUBSCRIBE);
+    if (out !== antes) {
+      cambios.push(`normalizó variable a ${BREVO_UNSUBSCRIBE}`);
+    }
+  }
+
+  return { html: out, cambios };
+}
+
+/** Añade alt="" a <img> que no tengan alt. */
+function repararImgAlt(html: string): { html: string; reparadas: number } {
+  let reparadas = 0;
+  const out = html.replace(/<img\b([^>]*)>/gi, (tag, attrs: string) => {
+    if (/\balt\s*=/i.test(attrs)) return tag;
+    reparadas += 1;
+    const trimmed = attrs.trim();
+    const sep = trimmed ? " " : "";
+    return `<img${sep}${trimmed}${sep}alt="">`;
+  });
+  return { html: out, reparadas };
+}
+
+/**
+ * Si falta el enlace de baja, lo inserta antes de </body> o al final.
+ * Si existe el token pero no como href de <a>, añade el <a>.
+ */
+function repararUnsubscribe(html: string): { html: string; reparado: boolean } {
+  if (
+    new RegExp(
+      `<a\\b[^>]*href=["']${escapeRegExp(BREVO_UNSUBSCRIBE)}["']`,
+      "i",
+    ).test(html)
+  ) {
+    return { html, reparado: false };
+  }
+
+  const link = `<a href="${BREVO_UNSUBSCRIBE}" style="color:#1a2744;text-decoration:underline;">Cancelar suscripción</a>`;
+  const bloque = `<tr><td align="center" style="padding:16px 28px 28px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#5a5a5a;">${link}</td></tr>`;
+
+  // Preferir insertar antes del cierre de la tabla interna / body
+  if (/<\/table>\s*<\/td>\s*<\/tr>\s*<\/table>\s*<\/body>/i.test(html)) {
+    return {
+      html: html.replace(
+        /<\/table>\s*<\/td>\s*<\/tr>\s*<\/table>\s*<\/body>/i,
+        `${bloque}</table></td></tr></table></body>`,
+      ),
+      reparado: true,
+    };
+  }
+  if (/<\/body>/i.test(html)) {
+    return {
+      html: html.replace(/<\/body>/i, `<table role="presentation" width="100%">${bloque}</table></body>`),
+      reparado: true,
+    };
+  }
+  return { html: `${html}\n${link}`, reparado: true };
+}
+
+/** Si falta FIRSTNAME, lo inyecta al inicio del primer párrafo de saludo o crea uno. */
+function repararFirstname(html: string): { html: string; reparado: boolean } {
+  if (html.includes(BREVO_FIRSTNAME)) {
+    return { html, reparado: false };
+  }
+  // Prefijo en el primer <p> del body de contenido
+  const reemplazado = html.replace(
+    /(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i,
+    (_m, open: string, inner: string, close: string) => {
+      const texto = inner.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, "").trim();
+      if (/^hola\b/i.test(texto)) {
+        return `${open}Hola ${BREVO_FIRSTNAME},${inner.includes("<br") ? "" : "<br/><br/>"}${inner.replace(/^hola\b[,\s]*/i, "")}${close}`;
+      }
+      return `${open}Hola ${BREVO_FIRSTNAME},<br/><br/>${inner}${close}`;
+    },
+  );
+  if (reemplazado !== html) {
+    return { html: reemplazado, reparado: true };
+  }
+  // Fallback: fila nueva tras el primer <table> interno
+  if (/<body\b[^>]*>/i.test(html)) {
+    return {
+      html: html.replace(
+        /(<body\b[^>]*>)/i,
+        `$1<table role="presentation" width="100%"><tr><td style="padding:16px;font-family:Arial,Helvetica,sans-serif;">Hola ${BREVO_FIRSTNAME},</td></tr></table>`,
+      ),
+      reparado: true,
+    };
+  }
+  return {
+    html: `Hola ${BREVO_FIRSTNAME},\n${html}`,
+    reparado: true,
+  };
+}
+
 function extraerPlaceholders(html: string): string[] {
   return [...html.matchAll(/\[\[[A-Z0-9_]+\]\]/g)].map((m) => m[0]!);
 }
@@ -157,7 +284,10 @@ function imgsSinAlt(html: string): number {
   let malas = 0;
   for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
     const tag = m[0]!;
-    if (!/\balt\s*=\s*(["']).*?\1/i.test(tag) && !/\balt\s*=\s*[^\s>]+/i.test(tag)) {
+    if (
+      !/\balt\s*=\s*(["']).*?\1/i.test(tag) &&
+      !/\balt\s*=\s*[^\s>]+/i.test(tag)
+    ) {
       malas += 1;
     }
   }
@@ -165,7 +295,6 @@ function imgsSinAlt(html: string): number {
 }
 
 function tieneFlexOGridEnDiv(html: string): boolean {
-  // Busca <div ... style="...flex|grid...">
   for (const m of html.matchAll(/<div\b([^>]*)>/gi)) {
     const attrs = m[1] || "";
     const style = attrs.match(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/i)?.[2] || "";
@@ -175,10 +304,6 @@ function tieneFlexOGridEnDiv(html: string): boolean {
     if (/\b(flex|grid)-(direction|wrap|template|row|column)\s*:/i.test(style)) {
       return true;
     }
-  }
-  // class="...flex..." suelto en div también sospechoso en email
-  for (const m of html.matchAll(/<div\b([^>]*)>/gi)) {
-    const attrs = m[1] || "";
     if (/\bclass\s*=\s*(["'])[^"']*\b(flex|grid)\b[^"']*\1/i.test(attrs)) {
       return true;
     }
@@ -199,18 +324,26 @@ function htmlParseaBasico(html: string): boolean {
   return true;
 }
 
+function tieneUnsubscribeLink(html: string): boolean {
+  return new RegExp(
+    `<a\\b[^>]*href=["']${escapeRegExp(BREVO_UNSUBSCRIBE)}["']`,
+    "i",
+  ).test(html);
+}
+
 /**
- * Verifica (y limpia) HTML de email listo para Brevo.
- * `estricto`: si true, lanza HtmlEmailInvalidoError cuando hay errores.
+ * Verifica (limpia y auto-repara) HTML de email listo para Brevo.
+ * `estricto`: si true, lanza HtmlEmailInvalidoError cuando quedan errores.
  */
 export function verificarHtmlEmail(
   entrada: string,
   opciones?: { estricto?: boolean },
 ): ResultadoVerificacionHtml {
   const hallazgos: HallazgoHtmlEmail[] = [];
-  const { html: limpio, limpio: seLimpio } = limpiarEnvoltorioHtml(entrada);
-  let html = limpio;
 
+  // --- Auto-reparaciones seguras ---
+  const { html: sinEnvoltorio, limpio: seLimpio } = limpiarEnvoltorioHtml(entrada);
+  let html = sinEnvoltorio;
   if (seLimpio) {
     hallazgos.push({
       codigo: "envoltorio",
@@ -219,6 +352,47 @@ export function verificarHtmlEmail(
     });
   }
 
+  const vars = normalizarVarsBrevo(html);
+  html = vars.html;
+  for (const c of vars.cambios) {
+    hallazgos.push({
+      codigo: "brevo-var",
+      severidad: "auto-fix",
+      mensaje: c,
+    });
+  }
+
+  const alts = repararImgAlt(html);
+  html = alts.html;
+  if (alts.reparadas > 0) {
+    hallazgos.push({
+      codigo: "img-alt",
+      severidad: "auto-fix",
+      mensaje: `Se añadió alt a ${alts.reparadas} <img>`,
+    });
+  }
+
+  const fn = repararFirstname(html);
+  html = fn.html;
+  if (fn.reparado) {
+    hallazgos.push({
+      codigo: "firstname",
+      severidad: "auto-fix",
+      mensaje: `Se insertó ${BREVO_FIRSTNAME} en el saludo`,
+    });
+  }
+
+  const uns = repararUnsubscribe(html);
+  html = uns.html;
+  if (uns.reparado) {
+    hallazgos.push({
+      codigo: "unsubscribe",
+      severidad: "auto-fix",
+      mensaje: `Se insertó <a href="${BREVO_UNSUBSCRIBE}"> en el footer`,
+    });
+  }
+
+  // --- Validaciones no negociables (tras reparar) ---
   const empiezaBien =
     /^<!DOCTYPE\s+html/i.test(html) ||
     /^<html[\s>]/i.test(html) ||
@@ -240,17 +414,11 @@ export function verificarHtmlEmail(
     });
   }
 
-  if (!html.includes(BREVO_UNSUBSCRIBE)) {
+  if (!html.includes(BREVO_UNSUBSCRIBE) || !tieneUnsubscribeLink(html)) {
     hallazgos.push({
       codigo: "unsubscribe",
       severidad: "error",
-      mensaje: `Falta ${BREVO_UNSUBSCRIBE} (Brevo lo exige)`,
-    });
-  } else if (!new RegExp(`<a\\b[^>]*href=["']${BREVO_UNSUBSCRIBE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`, "i").test(html)) {
-    hallazgos.push({
-      codigo: "unsubscribe-link",
-      severidad: "error",
-      mensaje: `El footer debe incluir <a href="${BREVO_UNSUBSCRIBE}">`,
+      mensaje: `Falta <a href="${BREVO_UNSUBSCRIBE}"> (Brevo lo exige)`,
     });
   }
 
@@ -291,20 +459,19 @@ export function verificarHtmlEmail(
     });
   }
 
-  if (!htmlParseaBasico(html)) {
-    hallazgos.push({
-      codigo: "parseo",
-      severidad: "error",
-      mensaje: "El HTML no parsea de forma coherente (tablas/html desbalanceados)",
-    });
-  }
-
-  // Avisos no bloqueantes
   if (!/<table\b/i.test(html)) {
     hallazgos.push({
       codigo: "sin-table",
       severidad: "error",
       mensaje: "No hay <table>; el layout de email debe basarse en tablas",
+    });
+  }
+
+  if (!htmlParseaBasico(html)) {
+    hallazgos.push({
+      codigo: "parseo",
+      severidad: "error",
+      mensaje: "El HTML no parsea de forma coherente (tablas/html desbalanceados)",
     });
   }
 
@@ -331,7 +498,8 @@ export function verificarHtmlEmail(
 }
 
 /**
- * Limpia + verifica en modo estricto. Devuelve HTML listo para Brevo.
+ * Limpia + auto-repara + verifica en modo estricto.
+ * Devuelve HTML listo para Brevo o lanza HtmlEmailInvalidoError.
  */
 export function asegurarHtmlEmail(entrada: string): string {
   return verificarHtmlEmail(entrada, { estricto: true }).html;
