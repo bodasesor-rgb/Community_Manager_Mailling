@@ -15,32 +15,32 @@ export interface ReglasComposer {
   actualizadoEn: string;
 }
 
-export const REGLAS_DEFAULT = `Estructura fija del correo (debe parecerse a la web Bodasesor):
+export const REGLAS_DEFAULT = `ORDEN OBLIGATORIO DEL CORREO (igual que la web Bodasesor):
 
-1) NAVBAR PRINCIPAL arriba del todo
-   - Solo los enlaces iniciales del menú de bodasesor.com (sin submenús).
-   - Cada ítem debe ir linkeado a su URL real.
-   - Mostrar también el logo de Bodasesor.
+1) NAVBAR PRINCIPAL (arriba del todo)
+   - Solo enlaces iniciales: Inicio, Bodas, XV años, Corporativos, Servicios, Blog, Galería, Cotizar.
+   - SIN submenús. Cada ítem linkeado a su URL real de bodasesor.com.
+   - Debajo de la navbar: LOGO Bodasesor visible.
 
-2) ÁREA DE BLOG
-   - Tomar un artículo al azar del blog del sitio.
-   - Mostrar solo unos 3 párrafos (no el artículo completo).
-   - Cerrar con el enlace «Ver más» a la nota completa.
+2) BLOG (después del logo / saludo)
+   - Artículo AL AZAR del blog del sitio.
+   - Solo ~3 párrafos (no el artículo completo).
+   - Botón/enlace final: «Ver más» a la nota real.
 
-3) 8 PRODUCTOS
-   - Mostrar exactamente 8 productos/servicios variados de lo que manejamos.
-   - Cada uno con acceso directo (enlace) a su página en bodasesor.com.
-   - Preferir imagen + botón/enlace «Ver servicio».
+3) 8 PRODUCTOS VARIADOS
+   - Exactamente 8 productos/servicios distintos del catálogo.
+   - Cada uno con acceso directo (URL) a su página.
+   - Con imagen si hay y botón «Ver servicio».
 
-4) CÓDIGO DE DESCUENTO
-   - Incluir un código de descuento por mailing del 10%.
+4) DESCUENTO MAILING
    - Código: MAILING10
-   - Debe quedar visible y claro cerca del final del correo.
+   - 10% de descuento, bloque visible y claro.
 
 5) CONTACTO
-   - Incluir botones/enlaces de contacto (WhatsApp cotizar y redes si hay).
+   - Botón WhatsApp para cotizar + redes si existen.
 
-Estas reglas aplican siempre al generar, salvo que las borres o edites aquí.`;
+IMPORTANTE: esta estructura la arma el sistema siempre; la IA solo escribe textos (asunto, saludo, CTA).
+No omitas navbar, blog, 8 productos ni el código MAILING10.`;
 
 async function archivo(): Promise<string> {
   await asegurarPersistencia();

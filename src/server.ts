@@ -65,9 +65,11 @@ import {
   obtenerInspeccion,
 } from "./sitio/inspeccion.js";
 import {
+  eliminarDeBiblioteca,
   guardarEnBiblioteca,
   listarPlantillasBiblioteca,
   obtenerPlantillaBiblioteca,
+  reciclarPlantillaBiblioteca,
 } from "./panel/plantillas-biblioteca.js";
 import {
   guardarReglasComposer,
@@ -589,6 +591,32 @@ const servidor = http.createServer((req, res) => {
             instrucciones: i.instrucciones ?? null,
           })),
         });
+        return;
+      }
+
+      if (method === "POST" && path.endsWith("/reciclar") && path.startsWith("/api/biblioteca/")) {
+        if (!requiereAuth(req, res)) return;
+        const id = decodeURIComponent(
+          path.slice("/api/biblioteca/".length, -"/reciclar".length),
+        );
+        const copia = await reciclarPlantillaBiblioteca(id);
+        if (!copia) {
+          enviarJson(res, 404, { error: "plantilla no encontrada" });
+          return;
+        }
+        enviarJson(res, 201, copia);
+        return;
+      }
+
+      if (method === "DELETE" && path.startsWith("/api/biblioteca/")) {
+        if (!requiereAuth(req, res)) return;
+        const id = decodeURIComponent(path.slice("/api/biblioteca/".length));
+        const ok = await eliminarDeBiblioteca(id);
+        if (!ok) {
+          enviarJson(res, 404, { error: "plantilla no encontrada" });
+          return;
+        }
+        enviarJson(res, 200, { ok: true, id });
         return;
       }
 

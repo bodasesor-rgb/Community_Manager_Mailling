@@ -149,3 +149,31 @@ export async function guardarEnBiblioteca(input: {
   await escribirTodos(todos);
   return creado;
 }
+
+/** Solo borrado manual explícito. */
+export async function eliminarDeBiblioteca(id: string): Promise<boolean> {
+  const todos = await leerTodos();
+  const next = todos.filter((p) => p.id !== id);
+  if (next.length === todos.length) return false;
+  await escribirTodos(next);
+  return true;
+}
+
+/** Duplica un mail guardado para reciclarlo / editarlo sin perder el original. */
+export async function reciclarPlantillaBiblioteca(
+  id: string,
+): Promise<PlantillaBiblioteca | null> {
+  const original = await obtenerPlantillaBiblioteca(id);
+  if (!original) return null;
+  return guardarEnBiblioteca({
+    nombre: `${original.nombre} (copia)`.slice(0, 80),
+    asunto: original.asunto,
+    htmlContent: original.htmlContent,
+    remitente: original.remitente,
+    origen: "composer",
+    ...(original.instrucciones !== undefined
+      ? { instrucciones: original.instrucciones }
+      : {}),
+    ...(original.destino !== undefined ? { destino: original.destino } : {}),
+  });
+}

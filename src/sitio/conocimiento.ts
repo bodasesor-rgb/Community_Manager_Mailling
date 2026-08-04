@@ -533,6 +533,57 @@ export function sugerirProductosParaBrief(
   return [...top, ...fill].slice(0, limite);
 }
 
+/**
+ * 8 (o N) productos variados: mezcla categorías y prioriza relevancia al brief.
+ */
+export function elegirProductosVariados(
+  c: SitioConocimiento,
+  brief: string,
+  limite = 8,
+): ProductoSitio[] {
+  if (c.productos.length === 0) return [];
+  const relevantes = new Set(
+    sugerirProductosParaBrief(c, brief, Math.min(limite, c.productos.length)).map(
+      (p) => p.slug,
+    ),
+  );
+  const porCat = new Map<string, ProductoSitio[]>();
+  for (const p of c.productos) {
+    const cat = p.categoria || "otros";
+    const list = porCat.get(cat) ?? [];
+    list.push(p);
+    porCat.set(cat, list);
+  }
+  for (const [cat, list] of porCat) {
+    list.sort((a, b) => {
+      const ar = relevantes.has(a.slug) ? 1 : 0;
+      const br = relevantes.has(b.slug) ? 1 : 0;
+      return br - ar || Math.random() - 0.5;
+    });
+    porCat.set(cat, list);
+  }
+  const cats = [...porCat.keys()].sort(() => Math.random() - 0.5);
+  const out: ProductoSitio[] = [];
+  const usados = new Set<string>();
+  while (out.length < limite) {
+    let added = false;
+    for (const cat of cats) {
+      const list = porCat.get(cat) ?? [];
+      while (list.length > 0) {
+        const p = list.shift()!;
+        if (usados.has(p.slug)) continue;
+        usados.add(p.slug);
+        out.push(p);
+        added = true;
+        break;
+      }
+      if (out.length >= limite) break;
+    }
+    if (!added) break;
+  }
+  return out.slice(0, limite);
+}
+
 export function sugerirArticuloBlog(
   c: SitioConocimiento,
   brief: string,

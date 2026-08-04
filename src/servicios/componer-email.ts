@@ -1,6 +1,5 @@
 /**
- * Orquesta el composer: instrucciones en lenguaje natural → copy → HTML.
- * Usa conocimiento del sitio (productos/blog/redes) y biblioteca de imágenes.
+ * Orquesta el composer: instrucciones → copy IA → HTML con estructura FORZADA por reglas.
  */
 
 import { generarContenidoEmail } from "../gemini/generar-contenido.js";
@@ -15,13 +14,14 @@ import {
 import {
   articuloBlogAleatorio,
   conocimientoParaPrompt,
+  elegirProductosVariados,
   enlaceWhatsAppCotizar,
   leerConocimiento,
   navPrincipalSitio,
-  sugerirProductosParaBrief,
   tresParrafosBlog,
 } from "../sitio/conocimiento.js";
 import { leerReglasComposer } from "../panel/reglas-composer.js";
+import { interpretarReglasEstructura } from "./aplicar-reglas-estructura.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -42,6 +42,7 @@ export interface ComposerResultado {
   modeloTexto: string;
   destino: string;
   instrucciones: string;
+  estructura: string[];
   imagenes: {
     logo?: MediaItem;
     hero?: MediaItem;
@@ -113,10 +114,13 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
   const instrucciones = input.brief.trim();
   const sitio = await leerConocimiento();
   const reglas = await leerReglasComposer();
+  const estructura = interpretarReglasEstructura(reglas.texto);
+
   const briefAmpliado = [
     instrucciones,
     input.ideaTitulo ? `Idea elegida: ${input.ideaTitulo}` : "",
     input.destino ? `Destino/tema: ${input.destino}` : "",
+    `Estructura ya fijada por el sistema: ${estructura.checklist.join(" · ")}`,
   ]
     .filter(Boolean)
     .join("\n");
@@ -142,43 +146,38 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
   let reutilizadas = 0;
   let generadas = 0;
 
-  // Enlaces reales del sitio (WhatsApp con mensaje desde el correo)
   const ctaUrl = enlaceWhatsAppCotizar(
     sitio.redes.whatsapp || sitio.cotizarUrl,
   );
-  const sugeridos = sugerirProductosParaBrief(sitio, briefAmpliado, 8);
-  const blogSug = articuloBlogAleatorio(sitio);
 
-  let productos = [...(promo.productos ?? [])];
-  if (productos.length < 8 && sugeridos.length > 0) {
-    const usados = new Set(
-      productos.map((p) => (p.url || p.titulo).toLowerCase()),
+  // Productos: catálogo real variado (no inventados por la IA).
+  const delCatalogo = elegirProductosVariados(
+    sitio,
+    briefAmpliado,
+    estructura.requiereProductos,
+  );
+  const productos: Array<{
+    titulo: string;
+    descripcion: string;
+    url: string;
+    foto?: string;
+  }> = delCatalogo.map((p) => ({
+    titulo: p.nombre,
+    descripcion:
+      (p.descripcion || p.headline || `Servicio Bodasesor: ${p.nombre}.`).slice(
+        0,
+        160,
+      ),
+    url: p.url,
+  }));
+  if (productos.length < estructura.requiereProductos) {
+    advertencias.push(
+      `Solo hay ${productos.length}/${estructura.requiereProductos} productos en el catálogo. Inspecciona el sitio en /panel/sitio.`,
     );
-    for (const s of sugeridos) {
-      if (productos.length >= 8) break;
-      const key = s.url.toLowerCase();
-      if (usados.has(key) || usados.has(s.nombre.toLowerCase())) continue;
-      productos.push({
-        titulo: s.nombre,
-        descripcion: s.descripcion || `Servicio Bodasesor: ${s.nombre}.`,
-        url: s.url,
-      });
-      usados.add(key);
-    }
   }
-  productos = productos.slice(0, 8).map((p, i) => {
-    const match = sugeridos[i];
-    return {
-      ...p,
-      url: p.url && p.url.startsWith("http") ? p.url : match?.url,
-      descripcion:
-        p.descripcion ||
-        match?.descripcion ||
-        `Servicio Bodasesor: ${p.titulo}.`,
-    };
-  });
 
-  const blogBase = blogSug;
+  // Blog: siempre aleatorio del sitio + 3 párrafos.
+  const blogBase = articuloBlogAleatorio(sitio);
   const blog = {
     titulo: blogBase?.titulo ?? "Ideas en el blog Bodasesor",
     extracto: blogBase
@@ -186,6 +185,11 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
       : "Consejos y tendencias para tu celebración.\n\nEn Bodasesor compartimos ideas prácticas para bodas y eventos.\n\nDescubre más en nuestro blog.",
     url: blogBase?.url ?? sitio.blogUrl,
   };
+  if (!blogBase) {
+    advertencias.push(
+      "No hay artículos de blog en el catálogo; inspecciona el sitio para rellenarlos.",
+    );
+  }
 
   const logoRes = await resolverOGenerar({
     tipo: "logo",
@@ -197,26 +201,31 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     ...(input.logoId !== undefined ? { forzarId: input.logoId } : {}),
   });
   if (logoRes.reutilizada) reutilizadas += 1;
+  if (!logoRes.item && estructura.requiereLogo) {
+    advertencias.push("Sube el logo en Crear mail para que aparezca arriba.");
+  }
 
   let heroItem: MediaItem | null = null;
-  try {
-    const heroRes = await resolverOGenerar({
-      tipo: "hero",
-      destino,
-      texto: textoMatch,
-      prompt:
-        generado.imagePrompt ??
-        `Editorial wedding lifestyle photo in ${destino}, warm light, no text, tasteful celebration atmosphere`,
-      baseUrl: input.baseUrl,
-      generar: quiereGen,
-    });
-    heroItem = heroRes.item;
-    if (heroRes.reutilizada) reutilizadas += 1;
-    if (heroRes.generada) generadas += 1;
-  } catch (error: unknown) {
-    advertencias.push(
-      `Hero: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  if (estructura.mostrarHero) {
+    try {
+      const heroRes = await resolverOGenerar({
+        tipo: "hero",
+        destino,
+        texto: textoMatch,
+        prompt:
+          generado.imagePrompt ??
+          `Editorial wedding lifestyle photo in ${destino}, warm light, no text, tasteful celebration atmosphere`,
+        baseUrl: input.baseUrl,
+        generar: quiereGen,
+      });
+      heroItem = heroRes.item;
+      if (heroRes.reutilizada) reutilizadas += 1;
+      if (heroRes.generada) generadas += 1;
+    } catch (error: unknown) {
+      advertencias.push(
+        `Hero: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   const productosMedia: MediaItem[] = [];
@@ -250,19 +259,32 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     );
   }
 
+  const saludo =
+    promo.saludo?.includes("{{ contact.FIRSTNAME }}")
+      ? promo.saludo
+      : `Hola {{ contact.FIRSTNAME }},\n\n${promo.saludo || `En Bodasesor preparamos tu celebración en ${destino} con el mismo cuidado que ves en nuestra web.`}`;
+
   const htmlContent = generarEmailPromocionalHtml({
-    ...promo,
     destino,
+    heroTitulo: promo.heroTitulo || `Tu evento con Bodasesor en ${destino}`,
+    ...(promo.heroSubtitulo !== undefined
+      ? { heroSubtitulo: promo.heroSubtitulo }
+      : {}),
+    saludo,
+    ctaTexto: promo.ctaTexto || "Cotizar mi evento",
     ctaUrl,
     blog,
     productos,
-    navItems: navPrincipalSitio(sitio),
+    mostrarHero: estructura.mostrarHero,
+    navItems: estructura.requiereNavbar ? navPrincipalSitio(sitio) : [],
     descuento: {
-      porcentaje: 10,
-      codigo: "MAILING10",
-      texto:
-        "Menciona este código al cotizar por WhatsApp y recibe 10% de descuento por mailing.",
+      porcentaje: estructura.porcentajeDescuento,
+      codigo: estructura.codigoDescuento,
+      texto: `Menciona el código ${estructura.codigoDescuento} al cotizar por WhatsApp y recibe ${estructura.porcentajeDescuento}% de descuento por mailing.`,
     },
+    urgencia:
+      promo.urgencia ||
+      `Reserva tu fecha y usa ${estructura.codigoDescuento} para ${estructura.porcentajeDescuento}% de descuento por mailing.`,
     facebookUrl: sitio.redes.facebook ?? "[[ENLACE_FACEBOOK]]",
     instagramUrl: sitio.redes.instagram ?? "[[ENLACE_INSTAGRAM]]",
     whatsappUrl: ctaUrl,
@@ -272,8 +294,25 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
 
   if (generado.advertencia) advertencias.push(generado.advertencia);
 
+  // Validación dura de reglas
+  const faltantes: string[] = [];
+  if (estructura.requiereNavbar && !htmlContent.includes("Inicio")) {
+    faltantes.push("navbar");
+  }
+  if (estructura.requiereBlog && !htmlContent.includes("Ver más")) {
+    faltantes.push("blog/Ver más");
+  }
+  if ((htmlContent.match(/Ver servicio/g) || []).length < estructura.requiereProductos) {
+    faltantes.push(`${estructura.requiereProductos} productos`);
+  }
+  if (!htmlContent.includes(estructura.codigoDescuento)) {
+    faltantes.push(`código ${estructura.codigoDescuento}`);
+  }
+  if (faltantes.length) {
+    advertencias.push(`Revisa estructura: faltó ${faltantes.join(", ")}`);
+  }
+
   const asunto = (generado.asunto || `Bodasesor · ${destino}`).trim();
-  // Nombre interno = etiqueta del proyecto a partir del mismo asunto/brief.
   const nombre = (asunto.toLowerCase().startsWith("bodasesor")
     ? asunto
     : `Bodasesor · ${asunto}`)
@@ -288,6 +327,7 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     modeloTexto: generado.modeloTexto,
     destino,
     instrucciones,
+    estructura: estructura.checklist,
     imagenes: {
       ...(logoRes.item ? { logo: logoRes.item } : {}),
       ...(heroItem ? { hero: heroItem } : {}),

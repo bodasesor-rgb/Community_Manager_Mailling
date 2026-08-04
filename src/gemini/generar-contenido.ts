@@ -84,13 +84,13 @@ Devuelve SOLO un JSON válido (sin markdown) con esta forma exacta:
 }
 
 Reglas:
+- La ESTRUCTURA del HTML (navbar, logo, blog, 8 productos, código MAILING10) la arma otro módulo; tú solo escribes textos.
 - Interpreta el brief como pedidos en palabras normales (qué contar, a quién, qué ofrecer).
-- Respeta las REGLAS PERMANENTES DE ESTRUCTURA si vienen.
 - El campo "asunto" DEBE resumir las instrucciones del usuario (destino, oferta, descuento). No uses un asunto genérico.
-- Exactamente 8 productos variados; preferir nombres y URLs reales del conocimiento del sitio.
-- Sin emojis. No inventes dominios raros: solo bodasesor.com o las URLs del conocimiento.
+- En "productos" puedes listar 8 nombres del catálogo, pero el sistema los reemplazará por URLs reales.
+- Sin emojis. No inventes dominios raros: solo bodasesor.com.
 - Mantén {{ contact.FIRSTNAME }} literal en el saludo.
-- Menciona el descuento mailing 10% (código MAILING10) en urgencia o saludo.
+- Menciona MAILING10 (10% descuento) en urgencia o saludo.
 - imagePrompt en inglés, fotográfico.`;
 
   const { modelo, texto } = await generarTextoGemini({

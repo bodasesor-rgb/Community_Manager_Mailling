@@ -206,10 +206,17 @@ export function paginaPlantillasHtml(): string {
     "plantillas",
     `<section class="card">
       <h2>Plantillas</h2>
-      <p class="lead">Emails promocionales Bodasesor (navy / cream / gold) listos para Brevo. Elige un tema, edita el HTML, guarda borrador y aprueba sin enviar.</p>
+      <p class="lead">Aquí viven tus <strong>mails guardados</strong> de forma permanente en Hostinger. No se borran al actualizar el código: solo si los eliminas tú. Puedes abrir, reciclar o subir a Brevo.</p>
+      <div id="msg"></div>
+
+      <h3 style="font-family:Fraunces,Georgia,serif;margin-top:8px">Mails guardados</h3>
+      <p class="muted">Elige el que más te guste, recíclalo (crea una copia) o elimínalo manualmente.</p>
+      <div id="biblioteca"></div>
+
+      <h3 style="font-family:Fraunces,Georgia,serif;margin-top:28px">Editor</h3>
       <div class="row">
         <label style="margin:0;font-weight:600;display:flex;gap:8px;align-items:center">
-          Tema
+          Tema base
           <select id="tema">
             <option value="posadas">Posadas</option>
             <option value="cancun">Cancún</option>
@@ -219,14 +226,14 @@ export function paginaPlantillasHtml(): string {
         </label>
         <button type="button" class="sec" id="btn-tema">Cargar tema</button>
         <button type="button" class="sec" id="btn-nuevo">Nuevo</button>
-        <button type="button" class="sec" id="btn-guardar">Guardar borrador</button>
-        <button type="button" id="btn-aprobar">Aprobar y enviar a Brevo</button>
-        <span id="estado" class="muted">estado: borrador</span>
+        <button type="button" id="btn-guardar-mail">Guardar mail</button>
+        <button type="button" class="sec" id="btn-aprobar">Aprobar a Brevo</button>
+        <span id="estado" class="muted">sin mail abierto</span>
       </div>
-      <div id="msg"></div>
       <div class="grid">
         <form id="form-plantilla">
           <input type="hidden" id="id"/>
+          <input type="hidden" id="libId"/>
           <label>Nombre interno<input id="nombre" value="Newsletter Posadas" required/></label>
           <label>Asunto<input id="asunto" value="Bodasesor · Posadas" required/></label>
           <label>Remitente nombre<input id="remNombre" value="Bodasesor" required/></label>
@@ -239,11 +246,9 @@ export function paginaPlantillasHtml(): string {
           <iframe id="preview" title="Vista previa"></iframe>
         </div>
       </div>
-      <h3 style="font-family:Fraunces,Georgia,serif;margin-top:28px">Borradores guardados</h3>
+      <h3 style="font-family:Fraunces,Georgia,serif;margin-top:28px">Borradores temporales</h3>
+      <p class="muted">Solo apoyo interno. Lo importante son los «Mails guardados» de arriba.</p>
       <div id="lista"></div>
-      <h3 style="font-family:Fraunces,Georgia,serif;margin-top:28px">Biblioteca del proyecto (permanente)</h3>
-      <p class="muted">Aquí no se pierden al aprobar. Puedes reabrirlas y volver a subirlas a Brevo.</p>
-      <div id="biblioteca"></div>
     </section>
     <script>
       const htmlContent = document.getElementById('htmlContent');
@@ -255,6 +260,9 @@ export function paginaPlantillasHtml(): string {
 
       function setMsg(ok, text){ msg.innerHTML = '<div class="' + (ok?'ok':'err') + '">' + escapeHtml(text) + '</div>'; }
       function escapeHtml(s){return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+      function fechaCorta(iso){
+        try { return new Date(iso).toLocaleString('es-MX'); } catch { return iso || ''; }
+      }
 
       async function cargarTema(tema){
         const res = await fetch('/api/plantillas/tema', {
@@ -266,6 +274,7 @@ export function paginaPlantillasHtml(): string {
         htmlContent.value = data.htmlContent;
         document.getElementById('nombre').value = data.nombre || ('Newsletter ' + tema);
         document.getElementById('asunto').value = data.asunto || '';
+        document.getElementById('libId').value = '';
         refreshPreview();
         return data;
       }
@@ -274,15 +283,93 @@ export function paginaPlantillasHtml(): string {
         try {
           const tema = document.getElementById('tema').value;
           await cargarTema(tema);
-          setMsg(true, 'Tema «' + tema + '» cargado. Placeholders [[FOTO_HERO]], [[ENLACE_COTIZAR]], etc. listos para Brevo.');
+          setMsg(true, 'Tema «' + tema + '» cargado.');
         } catch (err) { setMsg(false, err.message || String(err)); }
       };
+
+      async function abrirBiblioteca(id){
+        const r = await fetch('/api/biblioteca/' + id);
+        const b = await r.json();
+        if (!r.ok) throw new Error(b.error || 'No se pudo abrir');
+        document.getElementById('id').value = '';
+        document.getElementById('libId').value = b.id;
+        document.getElementById('nombre').value = b.nombre;
+        document.getElementById('asunto').value = b.asunto;
+        document.getElementById('remNombre').value = b.remitente.nombre;
+        document.getElementById('remEmail').value = b.remitente.email;
+        htmlContent.value = b.htmlContent;
+        estadoEl.textContent = 'mail guardado · ' + b.id.slice(0,8);
+        refreshPreview();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      async function cargarBiblioteca(){
+        const res = await fetch('/api/biblioteca');
+        const data = await res.json();
+        const items = data.items || [];
+        const el = document.getElementById('biblioteca');
+        if (!el) return;
+        if (!items.length) {
+          el.innerHTML = '<p class="muted">Aún no hay mails guardados. Crea uno en <a href="/panel/crear">Crear mail</a> y pulsa <strong>Guardar mail</strong>.</p>';
+          return;
+        }
+        el.innerHTML = '<table><thead><tr><th>Nombre</th><th>Asunto</th><th>Actualizado</th><th></th></tr></thead><tbody>' +
+          items.map(b => '<tr data-row="'+b.id+'"><td>'+escapeHtml(b.nombre)+'</td><td>'+escapeHtml(b.asunto)+'</td><td class="muted">'+escapeHtml(fechaCorta(b.actualizadoEn))+'</td><td style="white-space:nowrap">' +
+            '<button type="button" class="sec" data-open="'+b.id+'">Abrir</button> ' +
+            '<button type="button" class="sec" data-reciclar="'+b.id+'">Reciclar</button> ' +
+            '<button type="button" class="sec" data-borrar="'+b.id+'">Eliminar</button>' +
+            '</td></tr>').join('') +
+          '</tbody></table>';
+        el.querySelectorAll('button[data-open]').forEach(btn => {
+          btn.onclick = async () => {
+            try { await abrirBiblioteca(btn.getAttribute('data-open')); setMsg(true, 'Mail abierto. Puedes editarlo y volver a Guardar mail.'); }
+            catch (err) { setMsg(false, err.message || String(err)); }
+          };
+        });
+        el.querySelectorAll('button[data-reciclar]').forEach(btn => {
+          btn.onclick = async () => {
+            try {
+              const id = btn.getAttribute('data-reciclar');
+              const res = await fetch('/api/biblioteca/' + id + '/reciclar', { method:'POST' });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || 'No se pudo reciclar');
+              await cargarBiblioteca();
+              await abrirBiblioteca(data.id);
+              setMsg(true, 'Copia creada. El original sigue guardado.');
+            } catch (err) { setMsg(false, err.message || String(err)); }
+          };
+        });
+        el.querySelectorAll('button[data-borrar]').forEach(btn => {
+          btn.onclick = async () => {
+            const id = btn.getAttribute('data-borrar');
+            if (!confirm('¿Eliminar este mail guardado? Solo se borra si confirmas.')) return;
+            try {
+              const res = await fetch('/api/biblioteca/' + id, { method:'DELETE' });
+              const data = await res.json();
+              if (!res.ok) throw new Error(data.error || 'No se pudo eliminar');
+              if (document.getElementById('libId').value === id) {
+                document.getElementById('libId').value = '';
+                estadoEl.textContent = 'sin mail abierto';
+              }
+              setMsg(true, 'Mail eliminado manualmente.');
+              cargarBiblioteca();
+            } catch (err) { setMsg(false, err.message || String(err)); }
+          };
+        });
+
+        const params = new URLSearchParams(location.search);
+        const mailId = params.get('mail');
+        if (mailId) {
+          try { await abrirBiblioteca(mailId); setMsg(true, 'Mail guardado abierto.'); }
+          catch (err) { setMsg(false, err.message || String(err)); }
+        }
+      }
 
       async function cargarLista(){
         const res = await fetch('/api/borradores');
         const data = await res.json();
         const items = data.borradores || [];
-        if (!items.length) { document.getElementById('lista').innerHTML = '<p class="muted">Aún no hay borradores.</p>'; return; }
+        if (!items.length) { document.getElementById('lista').innerHTML = '<p class="muted">Sin borradores temporales.</p>'; return; }
         document.getElementById('lista').innerHTML = '<table><thead><tr><th>Nombre</th><th>Asunto</th><th>Estado</th><th></th></tr></thead><tbody>' +
           items.map(b => '<tr><td>'+escapeHtml(b.nombre)+'</td><td>'+escapeHtml(b.asunto)+'</td><td>'+escapeHtml(b.estado)+'</td><td><button type="button" class="sec" data-id="'+b.id+'">Abrir</button></td></tr>').join('') +
           '</tbody></table>';
@@ -291,6 +378,7 @@ export function paginaPlantillasHtml(): string {
             const r = await fetch('/api/borradores/' + btn.getAttribute('data-id'));
             const b = await r.json();
             document.getElementById('id').value = b.id;
+            document.getElementById('libId').value = '';
             document.getElementById('nombre').value = b.nombre;
             document.getElementById('asunto').value = b.asunto;
             document.getElementById('remNombre').value = b.remitente.nombre;
@@ -301,83 +389,97 @@ export function paginaPlantillasHtml(): string {
           });
         });
       }
+      cargarBiblioteca();
       cargarLista();
-      cargarTema('posadas').catch(err => setMsg(false, err.message || String(err)));
 
       document.getElementById('btn-nuevo').onclick = async () => {
         document.getElementById('id').value = '';
-        estadoEl.textContent = 'estado: borrador';
+        document.getElementById('libId').value = '';
+        estadoEl.textContent = 'nuevo';
         msg.innerHTML = '';
         try { await cargarTema(document.getElementById('tema').value); }
         catch (err) { setMsg(false, err.message || String(err)); }
       };
 
-      document.getElementById('btn-guardar').onclick = async () => {
+      document.getElementById('btn-guardar-mail').onclick = async () => {
         try {
-          const body = {
-            id: document.getElementById('id').value || undefined,
-            nombre: document.getElementById('nombre').value,
-            asunto: document.getElementById('asunto').value,
+          const payload = {
+            id: document.getElementById('libId').value || undefined,
+            nombre: document.getElementById('nombre').value.trim(),
+            asunto: document.getElementById('asunto').value.trim(),
             htmlContent: htmlContent.value,
             remitente: {
               nombre: document.getElementById('remNombre').value,
               email: document.getElementById('remEmail').value
-            }
+            },
+            origen: 'manual'
           };
-          const res = await fetch('/api/borradores', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(body) });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'No se pudo guardar');
-          document.getElementById('id').value = data.id;
-          estadoEl.textContent = 'estado: ' + data.estado;
-          setMsg(true, 'Borrador guardado en local (aún no está en Brevo).');
-          cargarLista();
-        } catch (err) { setMsg(false, err.message || String(err)); }
-      };
-
-      document.getElementById('btn-aprobar').onclick = async () => {
-        const id = document.getElementById('id').value;
-        if (!id) { setMsg(false, 'Guarda el borrador antes de aprobar.'); return; }
-        try {
-          const ids = document.getElementById('listIds').value.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n > 0);
-          const res = await fetch('/api/plantillas/aprobar', {
+          if (!payload.nombre || !payload.asunto || !payload.htmlContent) {
+            setMsg(false, 'Nombre, asunto y HTML son obligatorios.');
+            return;
+          }
+          const res = await fetch('/api/biblioteca', {
             method:'POST', headers:{'content-type':'application/json'},
-            body: JSON.stringify({ borradorId: id, ...(ids.length ? { listIds: ids } : {}) })
+            body: JSON.stringify(payload)
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'No se pudo aprobar');
-          estadoEl.textContent = 'estado: aprobado';
-          setMsg(true, 'Aprobado en Brevo (plantilla #' + data.plantillaId + ') y guardado en biblioteca del proyecto (' + data.bibliotecaId + '). No se envió la campaña.');
-          cargarLista();
+          if (!res.ok) throw new Error(data.error || 'No se pudo guardar');
+          document.getElementById('libId').value = data.id;
+          estadoEl.textContent = 'mail guardado · ' + data.id.slice(0,8);
+          setMsg(true, 'Mail guardado en Hostinger. No se borrará en actualizaciones.');
           cargarBiblioteca();
         } catch (err) { setMsg(false, err.message || String(err)); }
       };
 
-      async function cargarBiblioteca(){
-        const res = await fetch('/api/biblioteca');
-        const data = await res.json();
-        const items = data.items || [];
-        const el = document.getElementById('biblioteca');
-        if (!el) return;
-        if (!items.length) { el.innerHTML = '<p class="muted">Aún no hay plantillas en la biblioteca del proyecto.</p>'; return; }
-        el.innerHTML = '<table><thead><tr><th>Nombre</th><th>Asunto</th><th>Brevo</th><th></th></tr></thead><tbody>' +
-          items.map(b => '<tr><td>'+escapeHtml(b.nombre)+'</td><td>'+escapeHtml(b.asunto)+'</td><td>'+escapeHtml(b.brevoPlantillaId ? ('#'+b.brevoPlantillaId) : 'solo local')+'</td><td><button type="button" class="sec" data-lib="'+b.id+'">Abrir</button></td></tr>').join('') +
-          '</tbody></table>';
-        el.querySelectorAll('button[data-lib]').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const r = await fetch('/api/biblioteca/' + btn.getAttribute('data-lib'));
-            const b = await r.json();
-            document.getElementById('id').value = '';
-            document.getElementById('nombre').value = b.nombre;
-            document.getElementById('asunto').value = b.asunto;
-            document.getElementById('remNombre').value = b.remitente.nombre;
-            document.getElementById('remEmail').value = b.remitente.email;
-            htmlContent.value = b.htmlContent;
-            estadoEl.textContent = 'estado: biblioteca local' + (b.brevoPlantillaId ? ' + Brevo #'+b.brevoPlantillaId : '');
-            refreshPreview();
+      document.getElementById('btn-aprobar').onclick = async () => {
+        try {
+          // Asegurar mail guardado + borrador para flujo Brevo
+          const libPayload = {
+            id: document.getElementById('libId').value || undefined,
+            nombre: document.getElementById('nombre').value.trim(),
+            asunto: document.getElementById('asunto').value.trim(),
+            htmlContent: htmlContent.value,
+            remitente: {
+              nombre: document.getElementById('remNombre').value,
+              email: document.getElementById('remEmail').value
+            },
+            origen: 'manual'
+          };
+          const resL = await fetch('/api/biblioteca', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify(libPayload)
           });
-        });
-      }
-      cargarBiblioteca();
+          const lib = await resL.json();
+          if (!resL.ok) throw new Error(lib.error || 'No se pudo guardar mail');
+          document.getElementById('libId').value = lib.id;
+
+          const resB = await fetch('/api/borradores', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({
+              id: document.getElementById('id').value || undefined,
+              nombre: lib.nombre,
+              asunto: lib.asunto,
+              htmlContent: lib.htmlContent,
+              remitente: lib.remitente
+            })
+          });
+          const borrador = await resB.json();
+          if (!resB.ok) throw new Error(borrador.error || 'No se pudo crear borrador');
+          document.getElementById('id').value = borrador.id;
+
+          const ids = document.getElementById('listIds').value.split(',').map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n > 0);
+          const res = await fetch('/api/plantillas/aprobar', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({ borradorId: borrador.id, ...(ids.length ? { listIds: ids } : {}) })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'No se pudo aprobar');
+          estadoEl.textContent = 'aprobado Brevo #' + data.plantillaId;
+          setMsg(true, 'Aprobado en Brevo (plantilla #' + data.plantillaId + '). El mail sigue en Mails guardados.');
+          cargarLista();
+          cargarBiblioteca();
+        } catch (err) { setMsg(false, err.message || String(err)); }
+      };
     </script>`,
   );
 }
@@ -605,7 +707,8 @@ export function paginaCrearHtml(): string {
           </div>
           <div class="row">
             <button type="button" id="btn-generar">Generar borrador</button>
-            <button type="button" class="sec" id="btn-guardar" disabled>Guardar borrador</button>
+            <button type="button" id="btn-guardar" disabled>Guardar mail</button>
+            <a class="sec" href="/panel/plantillas" style="display:inline-block;padding:11px 16px;border-radius:10px;text-decoration:none;border:1px solid var(--brand);color:var(--brand);font-weight:700;background:#fff">Ver mails guardados</a>
             <span id="metaImg" class="muted"></span>
           </div>
           <label>Asunto <span class="muted">(se genera solo con tus instrucciones)</span>
@@ -804,6 +907,7 @@ export function paginaCrearHtml(): string {
       };
 
       document.getElementById('btn-guardar').onclick = async () => {
+        const btn = document.getElementById('btn-guardar');
         try {
           const asunto = document.getElementById('asunto').value.trim();
           const nombre = document.getElementById('nombre').value.trim();
@@ -811,6 +915,7 @@ export function paginaCrearHtml(): string {
             setMsg(false, 'Primero genera el borrador para completar asunto y nombre interno.');
             return;
           }
+          btn.disabled = true; btn.textContent = 'Guardando…';
           const remitente = { nombre: 'Bodasesor', email: 'hola@bodasesor.com' };
           const payload = {
             nombre,
@@ -821,20 +926,21 @@ export function paginaCrearHtml(): string {
             destino: document.getElementById('destino').value.trim() || undefined,
             origen: 'composer'
           };
-          const resB = await fetch('/api/borradores', {
+          const resL = await fetch('/api/biblioteca', {
             method:'POST', headers:{'content-type':'application/json'},
             body: JSON.stringify(payload)
           });
-          const borrador = await resB.json();
-          if (!resB.ok) throw new Error(borrador.error || 'No se pudo guardar borrador');
-          const resL = await fetch('/api/biblioteca', {
-            method:'POST', headers:{'content-type':'application/json'},
-            body: JSON.stringify({ ...payload, borradorId: borrador.id })
-          });
           const lib = await resL.json();
-          if (!resL.ok) throw new Error(lib.error || 'No se pudo guardar en biblioteca');
-          setMsg(true, 'Guardado en el proyecto (biblioteca) y como borrador. En Plantillas puedes aprobarlo a Brevo. biblioteca=' + lib.id);
+          if (!resL.ok) throw new Error(lib.error || 'No se pudo guardar el mail');
+          // Borrador opcional (no afecta la permanencia del mail guardado)
+          await fetch('/api/borradores', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({ ...payload, borradorId: undefined })
+          }).catch(() => null);
+          setMsg(true, 'Mail guardado en Plantillas. No se borrará al actualizar el sistema.');
+          window.location.href = '/panel/plantillas?mail=' + encodeURIComponent(lib.id);
         } catch (err) { setMsg(false, err.message || String(err)); }
+        finally { btn.disabled = false; btn.textContent = 'Guardar mail'; }
       };
     </script>`,
   );
