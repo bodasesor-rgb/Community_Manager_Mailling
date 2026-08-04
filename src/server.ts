@@ -1053,7 +1053,7 @@ const servidor = http.createServer((req, res) => {
           const htmlContent = generarEmailPromocionalHtml({
             ...tema,
             assetsBaseUrl: base,
-            logoUrl: tema.logoUrl || `${base}/assets/logo-white.svg`,
+            logoUrl: tema.logoUrl || `${base}/assets/logo-white.png`,
           });
           enviarJson(res, 200, {
             htmlContent,
@@ -1114,7 +1114,13 @@ const servidor = http.createServer((req, res) => {
           promocional?: EmailPromocionalInput;
         };
         if (body.promocional?.destino && body.promocional.heroTitulo) {
-          const htmlContent = generarEmailPromocionalHtml(body.promocional);
+          const base = baseUrlDesdeRequest(req);
+          const htmlContent = generarEmailPromocionalHtml({
+            ...body.promocional,
+            assetsBaseUrl: body.promocional.assetsBaseUrl || base,
+            logoUrl:
+              body.promocional.logoUrl || `${base}/assets/logo-white.png`,
+          });
           enviarJson(res, 200, {
             htmlContent,
             asunto: `Bodasesor · ${body.promocional.destino}`,
@@ -1135,7 +1141,7 @@ const servidor = http.createServer((req, res) => {
           const htmlContent = generarEmailPromocionalHtml({
             ...tema,
             assetsBaseUrl: base,
-            logoUrl: tema.logoUrl || `${base}/assets/logo-white.svg`,
+            logoUrl: tema.logoUrl || `${base}/assets/logo-white.png`,
           });
           enviarJson(res, 200, {
             htmlContent,
@@ -1153,7 +1159,7 @@ const servidor = http.createServer((req, res) => {
             heroTitulo: `${destino} te espera para celebrar`,
             heroSubtitulo: "Experiencias Bodasesor pensadas para tu evento",
             assetsBaseUrl: base,
-            logoUrl: `${base}/assets/logo-white.svg`,
+            logoUrl: `${base}/assets/logo-white.png`,
           });
           enviarJson(res, 200, {
             htmlContent,

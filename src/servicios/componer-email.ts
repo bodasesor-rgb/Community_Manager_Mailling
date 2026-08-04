@@ -302,15 +302,18 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     urgencia:
       promo.urgencia ||
       `Reserva tu fecha y usa ${estructura.codigoDescuento} para ${estructura.porcentajeDescuento}% de descuento por mailing.`,
-    facebookUrl: sitio.redes.facebook || "https://www.facebook.com/",
-    instagramUrl: sitio.redes.instagram || "https://www.instagram.com/",
+    facebookUrl:
+      sitio.redes.facebook ||
+      "https://www.facebook.com/p/Bodasesor-61551880049993/",
+    instagramUrl:
+      sitio.redes.instagram || "https://www.instagram.com/bodasesormx/",
     whatsappUrl: ctaUrl,
     assetsBaseUrl: input.baseUrl,
     logoUrl: logoRes.item
       ? logoRes.item.urlPublica.startsWith("http")
         ? logoRes.item.urlPublica
         : `${input.baseUrl}${logoRes.item.urlPublica.startsWith("/") ? "" : "/"}${logoRes.item.urlPublica}`
-      : `${input.baseUrl}/assets/logo-white.svg`,
+      : `${input.baseUrl}/assets/logo-white.png`,
     ...(heroItem ? { heroFoto: heroItem.urlPublica } : {}),
   });
 

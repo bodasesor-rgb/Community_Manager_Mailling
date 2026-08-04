@@ -124,7 +124,7 @@ export function escaparConPlaceholders(valor: string): string {
 }
 
 /**
- * Cabecera: logo a la izquierda (bien visible) + marca contrastante.
+ * Cabecera: logo PNG a la izquierda (compatible con clientes de correo).
  * Navbar en UNA sola línea; se omite «Cotizar» para que quepa.
  */
 function filaCabeceraYNav(
@@ -146,18 +146,14 @@ function filaCabeceraYNav(
   <td style="padding:0;background:${COLORES_BODASESOR.navy};">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
       <tr>
-        <td align="left" valign="middle" width="55%" style="padding:16px 12px 12px 20px;">
-          <a href="https://bodasesor.com/" style="text-decoration:none;">
-            <img src="${src}" alt="Bodasesor" width="160" height="auto" style="display:block;width:160px;max-width:100%;height:auto;border:0;outline:none;"/>
+        <td align="left" valign="middle" style="padding:18px 20px 14px 22px;">
+          <a href="https://bodasesor.com/" style="text-decoration:none;border:0;">
+            <img src="${src}" alt="Bodasesor Eventos" width="180" height="40" style="display:block;width:180px;max-width:70%;height:auto;border:0;outline:none;"/>
           </a>
-        </td>
-        <td align="right" valign="middle" width="45%" style="padding:16px 20px 12px 8px;">
-          <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:14px;line-height:1.35;color:${COLORES_BODASESOR.gold};letter-spacing:0.03em;">Bodasesor Eventos</p>
-          <p style="margin:4px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.3;color:${COLORES_BODASESOR.cream};opacity:0.9;">bodas y eventos</p>
         </td>
       </tr>
       <tr>
-        <td colspan="2" align="center" style="padding:8px 10px 14px;border-top:1px solid rgba(201,168,76,0.28);white-space:nowrap;">
+        <td align="center" style="padding:8px 10px 14px;border-top:1px solid rgba(201,168,76,0.28);white-space:nowrap;">
           ${links}
         </td>
       </tr>
@@ -347,7 +343,7 @@ export function generarEmailPromocionalHtml(
     input.logoUrl && !input.logoUrl.includes("[[LOGO]]")
       ? input.logoUrl
       : assetsBase
-        ? `${assetsBase}/assets/logo-white.svg`
+        ? `${assetsBase}/assets/logo-white.png`
         : "[[LOGO]]";
   const heroFoto = input.heroFoto ?? "[[FOTO_HERO]]";
   const ctaTexto = input.ctaTexto ?? "WhatsApp · Cotizar mi evento";
@@ -388,15 +384,15 @@ En Bodasesor preparamos experiencias inolvidables en ${destino}. Te compartimos 
   const facebookUrl =
     input.facebookUrl && !input.facebookUrl.includes("[[")
       ? input.facebookUrl
-      : "https://www.facebook.com/";
+      : "https://www.facebook.com/p/Bodasesor-61551880049993/";
   const instagramUrl =
     input.instagramUrl && !input.instagramUrl.includes("[[")
       ? input.instagramUrl
-      : "https://www.instagram.com/";
+      : "https://www.instagram.com/bodasesormx/";
   const whatsappUrl =
     input.whatsappUrl && !input.whatsappUrl.includes("[[")
       ? input.whatsappUrl
-      : "https://api.whatsapp.com/send?phone=5215540080373";
+      : "https://api.whatsapp.com/send?phone=5215540080373&text=Hola%2C%20vi%20tu%20correo%20y%20me%20gustar%C3%ADa%20cotizar%20un%20evento";
 
   return `<!DOCTYPE html>
 <html lang="es">

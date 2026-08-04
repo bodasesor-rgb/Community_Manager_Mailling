@@ -41,6 +41,7 @@ export function rutasPersistencia(): {
   mediaLibrary: string;
   sitio: string;
   reglas: string;
+  ultimasIdeas: string;
   suprimidos: string;
 } {
   return {
@@ -61,6 +62,9 @@ export function rutasPersistencia(): {
     reglas:
       process.env.REGLAS_COMPOSER_PATH?.trim() ||
       rutaDatos("reglas-composer.json"),
+    ultimasIdeas:
+      process.env.ULTIMAS_IDEAS_PATH?.trim() ||
+      rutaDatos("ultimas-ideas.json"),
     suprimidos:
       process.env.SUPRIMIDOS_PATH?.trim() ||
       rutaDatos("suprimidos.json"),

@@ -137,15 +137,18 @@ function seed(): SitioConocimiento {
     cotizarUrl: `${base}/`,
     blogUrl: `${base}/blog`,
     redes: {
-      ...(process.env.SITIO_FACEBOOK?.trim()
-        ? { facebook: process.env.SITIO_FACEBOOK.trim() }
-        : {}),
-      ...(process.env.SITIO_INSTAGRAM?.trim()
-        ? { instagram: process.env.SITIO_INSTAGRAM.trim() }
-        : {}),
+      facebook:
+        process.env.SITIO_FACEBOOK?.trim() ||
+        "https://www.facebook.com/p/Bodasesor-61551880049993/",
+      instagram:
+        process.env.SITIO_INSTAGRAM?.trim() ||
+        "https://www.instagram.com/bodasesormx/",
       ...(process.env.SITIO_WHATSAPP?.trim()
         ? { whatsapp: process.env.SITIO_WHATSAPP.trim() }
-        : {}),
+        : {
+            whatsapp:
+              "https://api.whatsapp.com/send?phone=5215540080373&text=Hola%2C%20me%20gustar%C3%ADa%20cotizar%20un%20evento",
+          }),
       linkedin:
         process.env.SITIO_LINKEDIN?.trim() ||
         "https://www.linkedin.com/company/bodasesor",
@@ -166,7 +169,16 @@ export async function leerConocimiento(): Promise<SitioConocimiento> {
   try {
     const raw = await fs.readFile(await archivoConocimiento(), "utf8");
     const parsed = JSON.parse(raw) as SitioConocimiento;
-    return { ...seed(), ...parsed, redes: { ...seed().redes, ...parsed.redes } };
+    const redesParsed = Object.fromEntries(
+      Object.entries(parsed.redes ?? {}).filter(
+        ([, v]) => typeof v === "string" && v.trim().length > 0,
+      ),
+    ) as SitioConocimiento["redes"];
+    return {
+      ...seed(),
+      ...parsed,
+      redes: { ...seed().redes, ...redesParsed },
+    };
   } catch (error: unknown) {
     if (
       typeof error === "object" &&
