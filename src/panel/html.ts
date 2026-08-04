@@ -384,12 +384,23 @@ export function paginaSitioHtml(): string {
     "sitio",
     `<section class="card">
       <h2>Mi sitio (Bodasesor)</h2>
-      <p class="lead">Leemos <code>/llms.txt</code> y el sitemap de bodasesor.com (resumen, servicios, WhatsApp, blog). Si tienes Instagram/Facebook, pégalos abajo.</p>
+      <p class="lead">Inspección completa: sitemap (todas las URLs), menús, catálogo JS de productos/blog y buscador. Verás un contador del tiempo restante mientras corre.</p>
       <div id="msg"></div>
       <div class="row">
-        <button type="button" id="btn-sync">Sincronizar sitio (llms + sitemap)</button>
+        <button type="button" id="btn-inspeccionar">Inspeccionar página</button>
         <button type="button" class="sec" id="btn-guardar">Guardar redes / URLs</button>
         <span id="meta" class="muted"></span>
+      </div>
+      <div id="inspeccion-box" class="logo-box" style="margin:14px 0;display:none">
+        <strong id="insp-etapa">Inspección</strong>
+        <div style="width:100%;background:#e8eef6;border-radius:999px;height:12px;overflow:hidden">
+          <div id="insp-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#14325c,#3d6ea5);transition:width .35s"></div>
+        </div>
+        <div class="row" style="margin:0;justify-content:space-between;width:100%">
+          <span id="insp-detalle" class="muted">—</span>
+          <span id="insp-eta" style="font-family:Fraunces,Georgia,serif;font-size:1.4rem;color:var(--brand)">--:--</span>
+        </div>
+        <div id="insp-contadores" class="stats" style="width:100%"></div>
       </div>
       <div class="grid">
         <div>
@@ -434,19 +445,64 @@ export function paginaSitioHtml(): string {
         document.getElementById('whatsapp').value = (c.redes && c.redes.whatsapp) || '';
         document.getElementById('linkedin').value = (c.redes && c.redes.linkedin) || '';
         document.getElementById('notas').textContent = c.notas || '';
-        document.getElementById('meta').textContent = c.sitemapSyncEn
-          ? ('Sitemap: ' + c.sitemapTotalUrls + ' URLs · sync ' + c.sitemapSyncEn)
-          : 'Aún no sincronizado';
+        document.getElementById('meta').textContent = c.inspeccionEn || c.sitemapSyncEn
+          ? ('URLs sitemap: ' + (c.sitemapTotalUrls||'?') + ' · Productos: ' + (c.productos||[]).length + ' · Blog: ' + (c.articulosBlog||[]).length + ' · Menús: ' + ((c.menus||[]).length))
+          : 'Aún no inspeccionado';
         document.getElementById('stats').innerHTML =
           '<div class="stat"><strong>'+(c.productos||[]).length+'</strong><span>Productos</span></div>' +
           '<div class="stat"><strong>'+(c.articulosBlog||[]).length+'</strong><span>Blog</span></div>' +
-          '<div class="stat"><strong>'+(c.ciudades||[]).length+'</strong><span>Ciudades</span></div>';
-        document.getElementById('productos').innerHTML = '<ul>' + (c.productos||[]).slice(0,40).map(p =>
-          '<li><a href="'+escapeHtml(p.url)+'" target="_blank" rel="noopener">'+escapeHtml(p.nombre)+'</a></li>'
-        ).join('') + '</ul>';
-        document.getElementById('blog').innerHTML = '<ul>' + (c.articulosBlog||[]).slice(0,15).map(a =>
+          '<div class="stat"><strong>'+((c.menus||[]).length)+'</strong><span>Menús</span></div>' +
+          '<div class="stat"><strong>'+(c.ciudades||[]).length+'</strong><span>Ciudades</span></div>' +
+          '<div class="stat"><strong>'+(c.sitemapTotalUrls||0)+'</strong><span>URLs</span></div>';
+        document.getElementById('productos').innerHTML = '<ul>' + (c.productos||[]).slice(0,60).map(p =>
+          '<li><a href="'+escapeHtml(p.url)+'" target="_blank" rel="noopener">'+escapeHtml(p.nombre)+'</a> <span class="muted">'+escapeHtml(p.slug)+'</span></li>'
+        ).join('') + ((c.productos||[]).length>60?'<li class="muted">… y '+(c.productos.length-60)+' más</li>':'') + '</ul>';
+        document.getElementById('blog').innerHTML = '<ul>' + (c.articulosBlog||[]).slice(0,20).map(a =>
           '<li><a href="'+escapeHtml(a.url)+'" target="_blank" rel="noopener">'+escapeHtml(a.titulo)+'</a></li>'
-        ).join('') + '</ul>';
+        ).join('') + ((c.articulosBlog||[]).length>20?'<li class="muted">… y '+(c.articulosBlog.length-20)+' más</li>':'') + '</ul>';
+      }
+
+      function fmtEta(seg){
+        if (seg==null || seg<0) return '--:--';
+        const m=Math.floor(seg/60), s=seg%60;
+        return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+      }
+
+      function pintarInspeccion(insp){
+        const box=document.getElementById('inspeccion-box');
+        if (!insp || insp.estado==='idle') { box.style.display='none'; return; }
+        box.style.display='grid';
+        document.getElementById('insp-etapa').textContent = insp.etapa + ' (' + insp.progreso + '%)';
+        document.getElementById('insp-bar').style.width = Math.max(0, Math.min(100, insp.progreso)) + '%';
+        document.getElementById('insp-detalle').textContent = insp.detalle || '';
+        document.getElementById('insp-eta').textContent =
+          insp.estado==='completada' ? '00:00' :
+          insp.estado==='error' ? 'Error' :
+          fmtEta(insp.etaSegundos);
+        const c=insp.contadores||{};
+        document.getElementById('insp-contadores').innerHTML =
+          '<div class="stat"><strong>'+(c.urlsSitemap||0)+'</strong><span>URLs</span></div>'+
+          '<div class="stat"><strong>'+(c.productos||0)+'</strong><span>Productos</span></div>'+
+          '<div class="stat"><strong>'+(c.blogs||0)+'</strong><span>Blog</span></div>'+
+          '<div class="stat"><strong>'+(c.menus||0)+'</strong><span>Menús</span></div>';
+      }
+
+      let pollTimer=null;
+      async function pollInspeccion(){
+        const res=await fetch('/api/sitio/inspeccionar');
+        const data=await res.json();
+        const insp=data.inspeccion;
+        pintarInspeccion(insp);
+        if (insp.estado==='corriendo') {
+          pollTimer=setTimeout(pollInspeccion, 1000);
+        } else {
+          if (insp.estado==='completada') {
+            setMsg(true, insp.detalle);
+            cargar();
+          } else if (insp.estado==='error') {
+            setMsg(false, insp.error || insp.detalle || 'Error en inspección');
+          }
+        }
       }
 
       async function cargar(){
@@ -455,18 +511,25 @@ export function paginaSitioHtml(): string {
         pintar(c);
       }
       cargar();
+      // recuperar inspección en curso al abrir
+      fetch('/api/sitio/inspeccionar').then(r=>r.json()).then(d=>{
+        if (d.inspeccion && d.inspeccion.estado==='corriendo') pollInspeccion();
+        else if (d.inspeccion && d.inspeccion.estado!=='idle') pintarInspeccion(d.inspeccion);
+      }).catch(()=>{});
 
-      document.getElementById('btn-sync').onclick = async () => {
-        const btn = document.getElementById('btn-sync');
-        btn.disabled = true; btn.textContent = 'Sincronizando…';
+      document.getElementById('btn-inspeccionar').onclick = async () => {
+        const btn = document.getElementById('btn-inspeccionar');
+        btn.disabled = true; btn.textContent = 'Inspeccionando…';
         try {
-          const res = await fetch('/api/sitio/sync-sitemap', { method:'POST', headers:{'content-type':'application/json'}, body:'{}' });
+          const res = await fetch('/api/sitio/inspeccionar', { method:'POST', headers:{'content-type':'application/json'}, body:'{}' });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Sync falló');
-          pintar(data.conocimiento);
-          setMsg(true, 'Sitio sincronizado: ' + data.productos + ' servicios, ' + data.articulosBlog + ' artículos, WhatsApp/CTA listos.');
+          if (!res.ok) throw new Error(data.error || 'No se pudo iniciar');
+          setMsg(true, 'Inspección iniciada. El contador muestra el tiempo estimado restante.');
+          pintarInspeccion(data.inspeccion);
+          if (pollTimer) clearTimeout(pollTimer);
+          pollTimer=setTimeout(pollInspeccion, 800);
         } catch (err) { setMsg(false, err.message || String(err)); }
-        finally { btn.disabled = false; btn.textContent = 'Sincronizar sitio (llms + sitemap)'; }
+        finally { btn.disabled = false; btn.textContent = 'Inspeccionar página'; }
       };
 
       document.getElementById('btn-guardar').onclick = async () => {

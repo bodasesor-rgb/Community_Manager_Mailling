@@ -57,9 +57,12 @@ import { componerEmail } from "./servicios/componer-email.js";
 import {
   actualizarConocimientoParcial,
   leerConocimiento,
-  sincronizarDesdeSitemap,
   type EnlaceSocial,
 } from "./sitio/conocimiento.js";
+import {
+  iniciarInspeccion,
+  obtenerInspeccion,
+} from "./sitio/inspeccion.js";
 import {
   guardarEnBiblioteca,
   listarPlantillasBiblioteca,
@@ -475,23 +478,25 @@ const servidor = http.createServer((req, res) => {
 
       if (method === "POST" && path === "/api/sitio/sync-sitemap") {
         if (!requiereAuth(req, res)) return;
-        try {
-          const conocimiento = await sincronizarDesdeSitemap();
-          enviarJson(res, 200, {
-            ok: true,
-            productos: conocimiento.productos.length,
-            articulosBlog: conocimiento.articulosBlog.length,
-            ciudades: conocimiento.ciudades.length,
-            sitemapTotalUrls: conocimiento.sitemapTotalUrls,
-            sitemapSyncEn: conocimiento.sitemapSyncEn,
-            conocimiento,
-          });
-        } catch (error: unknown) {
-          enviarJson(res, 502, {
-            error:
-              error instanceof Error ? error.message : "sync sitemap falló",
-          });
-        }
+        // Compat: redirige a inspección completa
+        const progreso = iniciarInspeccion();
+        enviarJson(res, 202, {
+          ok: true,
+          mensaje: "Inspección iniciada (usa /api/sitio/inspeccionar)",
+          inspeccion: progreso,
+        });
+        return;
+      }
+
+      if (method === "POST" && path === "/api/sitio/inspeccionar") {
+        if (!requiereAuth(req, res)) return;
+        const progreso = iniciarInspeccion();
+        enviarJson(res, 202, { ok: true, inspeccion: progreso });
+        return;
+      }
+
+      if (method === "GET" && path === "/api/sitio/inspeccionar") {
+        enviarJson(res, 200, { inspeccion: obtenerInspeccion() });
         return;
       }
 

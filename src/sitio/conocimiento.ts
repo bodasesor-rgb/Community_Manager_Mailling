@@ -21,12 +21,25 @@ export interface ProductoSitio {
   nombre: string;
   url: string;
   categoria: string;
+  descripcion?: string;
+  headline?: string;
 }
 
 export interface ArticuloBlog {
   slug: string;
   titulo: string;
   url: string;
+  fecha?: string;
+  categoria?: string;
+  imagen?: string;
+  extracto?: string;
+}
+
+export interface MenuSitio {
+  slug: string;
+  nombre: string;
+  url: string;
+  hijos: number;
 }
 
 export interface SitioConocimiento {
@@ -36,15 +49,18 @@ export interface SitioConocimiento {
   cotizarUrl: string;
   blogUrl: string;
   redes: EnlaceSocial;
-  /** Categorías / productos principales (desde sitemap + overrides). */
+  /** Inventario completo de productos/servicios. */
   productos: ProductoSitio[];
   articulosBlog: ArticuloBlog[];
+  /** Menús raíz del sitio (con conteo de URLs hijas). */
+  menus?: MenuSitio[];
   /** Ciudades detectadas en el sitemap. */
   ciudades: string[];
   notas?: string;
-  /** Último sync del sitemap. */
+  /** Último sync / inspección. */
   sitemapSyncEn?: string;
   sitemapTotalUrls?: number;
+  inspeccionEn?: string;
 }
 
 const PRODUCTOS_SEMILLA: Array<{ slug: string; nombre: string; categoria: string }> = [
@@ -105,9 +121,10 @@ function seed(): SitioConocimiento {
       url: `${base}/${p.slug}`,
     })),
     articulosBlog: [],
+    menus: [],
     ciudades: [],
     notas:
-      "Sitemap legible. HTML de páginas a menudo 403 para bots: configura redes a mano o permite el User-Agent del microservicio.",
+      "Pulsa «Inspeccionar página» en /panel/sitio para cargar el catálogo completo (sitemap + menús + blog + productos).",
   };
 }
 
@@ -368,13 +385,23 @@ export async function sincronizarDesdeSitemap(
 
 /** Texto compacto para inyectar en prompts de Gemini. */
 export function conocimientoParaPrompt(c: SitioConocimiento): string {
+  const menus = (c.menus ?? [])
+    .slice(0, 30)
+    .map((m) => `- ${m.nombre} (${m.hijos} urls): ${m.url}`)
+    .join("\n");
   const productos = c.productos
-    .slice(0, 20)
-    .map((p) => `- ${p.nombre}: ${p.url}`)
+    .slice(0, 40)
+    .map(
+      (p) =>
+        `- ${p.nombre}: ${p.url}${p.descripcion ? ` — ${p.descripcion.slice(0, 100)}` : ""}`,
+    )
     .join("\n");
   const blog = c.articulosBlog
-    .slice(0, 8)
-    .map((a) => `- ${a.titulo}: ${a.url}`)
+    .slice(0, 15)
+    .map(
+      (a) =>
+        `- ${a.titulo}: ${a.url}${a.extracto ? ` — ${a.extracto.slice(0, 80)}` : ""}`,
+    )
     .join("\n");
   const redes = [
     c.redes.instagram ? `Instagram: ${c.redes.instagram}` : null,
@@ -388,15 +415,18 @@ export function conocimientoParaPrompt(c: SitioConocimiento): string {
   return `Marca: Bodasesor
 Sitio: ${c.baseUrl}
 Resumen: ${c.resumen}
+Inventario: ${c.productos.length} productos/servicios, ${c.articulosBlog.length} blogs, ${(c.menus ?? []).length} menús, ${c.sitemapTotalUrls ?? "?"} URLs sitemap.
 Cotizar: ${c.cotizarUrl || c.redes.whatsapp || c.baseUrl}
 Blog: ${c.blogUrl}
 Ciudades (muestra): ${c.ciudades.slice(0, 15).join(", ") || "todo México"}
 Redes:
-${redes || "(pendiente configurar en panel)"}
-Productos/servicios (usar URLs reales en CTAs y bloques):
+${redes || "(pendiente Instagram/Facebook en panel)"}
+Menús principales:
+${menus || "(inspecciona el sitio)"}
+Productos/servicios (muestra; hay ${c.productos.length} en total):
 ${productos}
-Artículos de blog recientes (enlazar uno si aplica):
-${blog || "(sincroniza sitemap)"}`;
+Artículos de blog (muestra; hay ${c.articulosBlog.length} en total):
+${blog || "(inspecciona el sitio)"}`;
 }
 
 /** Elige hasta 3 productos relevantes al brief. */
