@@ -191,9 +191,12 @@ export async function buscarMediaCompatible(input: {
   destino?: string;
   texto?: string;
   umbral?: number;
+  /** IDs ya usados en el mismo mail (no repetir). */
+  excluirIds?: string[];
 }): Promise<MediaItem | null> {
+  const excluidos = new Set(input.excluirIds ?? []);
   const items = (await listarMedia({ tipo: input.tipo })).filter(
-    (i) => i.tipo === input.tipo,
+    (i) => i.tipo === input.tipo && !excluidos.has(i.id),
   );
   if (items.length === 0) return null;
 

@@ -61,6 +61,7 @@ async function resolverOGenerar(input: {
   baseUrl: string;
   generar: boolean;
   forzarId?: string;
+  excluirIds?: string[];
 }): Promise<{ item: MediaItem | null; reutilizada: boolean; generada: boolean }> {
   if (input.forzarId) {
     const fijo = await obtenerMedia(input.forzarId);
@@ -71,6 +72,7 @@ async function resolverOGenerar(input: {
     tipo: input.tipo,
     destino: input.destino,
     texto: input.texto,
+    ...(input.excluirIds?.length ? { excluirIds: input.excluirIds } : {}),
   });
   if (existente) {
     const url = existente.urlPublica.startsWith("http")
@@ -191,6 +193,7 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     );
   }
 
+  const usadosIds = new Set<string>();
   const logoRes = await resolverOGenerar({
     tipo: "logo",
     destino,
@@ -201,6 +204,7 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     ...(input.logoId !== undefined ? { forzarId: input.logoId } : {}),
   });
   if (logoRes.reutilizada) reutilizadas += 1;
+  if (logoRes.item) usadosIds.add(logoRes.item.id);
   if (!logoRes.item && estructura.requiereLogo) {
     advertencias.push("Sube el logo en Crear mail para que aparezca arriba.");
   }
@@ -217,10 +221,12 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
           `Editorial wedding lifestyle photo in ${destino}, warm light, no text, tasteful celebration atmosphere`,
         baseUrl: input.baseUrl,
         generar: quiereGen,
+        excluirIds: [...usadosIds],
       });
       heroItem = heroRes.item;
       if (heroRes.reutilizada) reutilizadas += 1;
       if (heroRes.generada) generadas += 1;
+      if (heroItem) usadosIds.add(heroItem.id);
     } catch (error: unknown) {
       advertencias.push(
         `Hero: ${error instanceof Error ? error.message : String(error)}`,
@@ -235,16 +241,25 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
       const res = await resolverOGenerar({
         tipo: "producto",
         destino,
-        texto: `${textoMatch} ${p.titulo} ${p.descripcion}`,
-        prompt: `Wedding event detail photo for "${p.titulo}" in ${destino}, no text, photorealistic`,
+        texto: `${p.titulo} ${p.descripcion} ${destino}`,
+        prompt: `Unique wedding/event service photo for "${p.titulo}": ${p.descripcion}. Location mood ${destino}. No text, photorealistic, different composition from other shots`,
         baseUrl: input.baseUrl,
         generar: quiereGen,
+        excluirIds: [...usadosIds],
       });
       if (res.item) {
-        productosMedia.push(res.item);
-        productos[i] = { ...p, foto: res.item.urlPublica };
-        if (res.reutilizada) reutilizadas += 1;
-        if (res.generada) generadas += 1;
+        // Nunca repetir la misma imagen dentro del mismo mail
+        if (usadosIds.has(res.item.id)) {
+          advertencias.push(
+            `Producto ${i + 1}: se omitió imagen repetida (${p.titulo}).`,
+          );
+        } else {
+          usadosIds.add(res.item.id);
+          productosMedia.push(res.item);
+          productos[i] = { ...p, foto: res.item.urlPublica };
+          if (res.reutilizada) reutilizadas += 1;
+          if (res.generada) generadas += 1;
+        }
       }
     } catch (error: unknown) {
       advertencias.push(
@@ -271,7 +286,9 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
       ? { heroSubtitulo: promo.heroSubtitulo }
       : {}),
     saludo,
-    ctaTexto: promo.ctaTexto || "Cotizar mi evento",
+    ctaTexto: promo.ctaTexto?.toLowerCase().includes("whatsapp")
+      ? promo.ctaTexto
+      : `WhatsApp · ${promo.ctaTexto || "Cotizar mi evento"}`,
     ctaUrl,
     blog,
     productos,

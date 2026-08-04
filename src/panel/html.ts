@@ -20,10 +20,10 @@ function layout(titulo: string, activo: PaginaActiva, cuerpo: string): string {
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet"/>
   <style>
     :root{
-      --bg:#f4f7fb;
-      --ink:#1f2937;
+      --bg:#eef3f9;
+      --ink:#1a2433;
       --muted:#5b6b7c;
-      --line:#d5deea;
+      --line:#cfd9e6;
       --brand:#14325c;
       --brand2:#0f2444;
       --brand-mid:#3d6ea5;
@@ -32,64 +32,104 @@ function layout(titulo: string, activo: PaginaActiva, cuerpo: string): string {
       --ok-bg:#eaf1f8;
       --ok-line:#c5d6ea;
       --stat:#e8eef6;
+      --wa:#25D366;
+      --shadow:0 14px 36px rgba(20,50,92,.10);
     }
     *{box-sizing:border-box}
     body{margin:0;font-family:"Source Sans 3",system-ui,sans-serif;color:var(--ink);background:
-      radial-gradient(1000px 420px at 0% -10%, #d7e6f7 0%, transparent 55%),
-      radial-gradient(800px 360px at 100% 0%, #e9eef4 0%, transparent 50%),
-      var(--bg)}
-    .topbar{background:linear-gradient(180deg,var(--brand) 0%, var(--brand2) 100%);color:#fff;padding:14px 0 0}
-    .topbar-inner{max-width:1100px;margin:0 auto;padding:0 16px 14px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+      radial-gradient(1100px 480px at 0% -10%, #d3e4f8 0%, transparent 55%),
+      radial-gradient(900px 400px at 100% 0%, #e7edf4 0%, transparent 50%),
+      linear-gradient(180deg,#f7faff 0%, var(--bg) 40%, #e9eef5 100%)}
+    .topbar{background:linear-gradient(180deg,var(--brand) 0%, var(--brand2) 100%);color:#fff;padding:14px 0 0;box-shadow:0 10px 28px rgba(15,36,68,.28)}
+    .topbar-inner{max-width:1140px;margin:0 auto;padding:0 16px 14px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
     .logo-link{display:flex;align-items:center;gap:12px;text-decoration:none;color:#fff}
     .logo-link img{height:48px;width:auto;display:block}
     .logo-sub{font-size:.9rem;opacity:.85}
     .topbar-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-left:auto}
     nav{display:flex;gap:8px;flex-wrap:wrap}
-    nav a{padding:9px 14px;border:1px solid rgba(255,255,255,.28);border-radius:999px;text-decoration:none;color:#fff;background:rgba(255,255,255,.06)}
-    nav a.activo,nav a:hover{background:#fff;color:var(--brand);border-color:#fff}
+    nav a{padding:9px 14px;border:1px solid rgba(255,255,255,.28);border-radius:999px;text-decoration:none;color:#fff;background:rgba(255,255,255,.06);transition:transform .15s ease, background .15s ease, color .15s ease, box-shadow .15s ease}
+    nav a:hover{background:#fff;color:var(--brand);border-color:#fff;transform:translateY(-1px)}
+    nav a:active{transform:translateY(1px) scale(.97)}
+    nav a.activo{background:#fff;color:var(--brand);border-color:#fff;box-shadow:0 6px 16px rgba(0,0,0,.18)}
     .build-stamp{font-size:.72rem;line-height:1.35;opacity:.88;text-align:right;color:rgba(255,255,255,.92);white-space:nowrap}
     .build-stamp strong{display:block;font-weight:600;letter-spacing:.02em}
-    .shell{max-width:1100px;margin:0 auto;padding:24px 16px 56px}
-    .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 18px 40px rgba(20,50,92,.08)}
+    .shell{max-width:1140px;margin:0 auto;padding:28px 16px 72px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px;box-shadow:var(--shadow)}
+    .panel-hero{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;flex-wrap:wrap;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+    .panel-hero h2{margin:0 0 6px}
+    .panel-hero .lead{margin:0;max-width:62ch}
+    .steps{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+    .step{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:var(--stat);color:var(--brand);font-size:.86rem;font-weight:600;border:1px solid var(--ok-line)}
+    .step span{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--brand);color:#fff;font-size:.75rem}
+    .section-block{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#fbfcfe,#fff)}
+    .section-block > h3{margin:0 0 6px;font-family:Fraunces,Georgia,serif;color:var(--brand);font-size:1.15rem}
+    .section-block > .muted{margin:0 0 12px}
     h2{font-family:Fraunces,Georgia,serif;margin:0 0 8px;color:var(--brand)}
-    .lead{color:var(--muted);margin:0 0 18px}
+    .lead{color:var(--muted);margin:0 0 18px;line-height:1.5}
     label{display:grid;gap:6px;font-weight:600;margin-bottom:12px}
     input,textarea,button,select{font:inherit}
-    input,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+    input,textarea,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;transition:border-color .15s ease, box-shadow .15s ease}
+    input:focus,textarea:focus,select:focus{outline:none;border-color:var(--brand-mid);box-shadow:0 0 0 3px rgba(61,110,165,.18)}
     textarea{min-height:220px;font-family:ui-monospace,Menlo,monospace;font-size:.9rem}
     .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0}
-    button{appearance:none;border:0;border-radius:10px;padding:11px 16px;background:var(--brand);color:#fff;font-weight:700;cursor:pointer}
-    button:hover{background:var(--brand2)}
-    button.sec{background:#fff;color:var(--brand);border:1px solid var(--brand)}
-    button:disabled{opacity:.55;cursor:not-allowed}
-    .grid{display:grid;grid-template-columns:1.05fr .95fr;gap:16px}
+    button,a.btn{
+      appearance:none;border:0;border-radius:12px;padding:12px 18px;background:var(--brand);color:#fff;font-weight:700;cursor:pointer;
+      text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;
+      box-shadow:0 8px 18px rgba(20,50,92,.22);
+      transition:transform .12s ease, box-shadow .12s ease, background .12s ease, filter .12s ease;
+      position:relative;overflow:hidden;
+    }
+    button::after,a.btn::after{
+      content:"";position:absolute;inset:0;background:radial-gradient(circle at center, rgba(255,255,255,.35), transparent 55%);
+      opacity:0;transform:scale(.4);transition:opacity .2s ease, transform .2s ease;pointer-events:none;
+    }
+    button:hover,a.btn:hover{background:var(--brand2);transform:translateY(-2px);box-shadow:0 12px 24px rgba(20,50,92,.28)}
+    button:active,a.btn:active{transform:translateY(1px) scale(.97);box-shadow:0 3px 8px rgba(20,50,92,.2)}
+    button:active::after,a.btn:active::after{opacity:1;transform:scale(1.4)}
+    button.sec,a.btn.sec{background:#fff;color:var(--brand);border:1.5px solid var(--brand);box-shadow:0 6px 14px rgba(20,50,92,.1)}
+    button.sec:hover,a.btn.sec:hover{background:var(--ok-bg)}
+    button.wa{background:var(--wa);color:#fff;border:0;box-shadow:0 8px 18px rgba(37,211,102,.35)}
+    button.wa:hover{filter:brightness(.95);background:#1ebe57}
+    button:disabled{opacity:.55;cursor:not-allowed;transform:none;box-shadow:none}
+    button.pulse{animation:btnPulse 1.6s ease-in-out infinite}
+    @keyframes btnPulse{
+      0%,100%{box-shadow:0 8px 18px rgba(20,50,92,.22)}
+      50%{box-shadow:0 10px 26px rgba(20,50,92,.38),0 0 0 6px rgba(61,110,165,.12)}
+    }
+    .grid{display:grid;grid-template-columns:1.05fr .95fr;gap:18px}
     @media(max-width:900px){.grid{grid-template-columns:1fr}}
-    iframe{width:100%;min-height:520px;border:1px solid var(--line);border-radius:12px;background:#fff}
+    iframe{width:100%;min-height:560px;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:inset 0 0 0 1px rgba(255,255,255,.6)}
     .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:16px 0}
-    .stat{background:var(--stat);border-radius:12px;padding:12px}
+    .stat{background:var(--stat);border-radius:12px;padding:12px;border:1px solid var(--ok-line)}
     .stat strong{display:block;font-family:Fraunces,Georgia,serif;font-size:1.5rem;color:var(--brand)}
-    table{width:100%;border-collapse:collapse;margin-top:10px}
-    th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line)}
-    th{color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.04em}
+    table{width:100%;border-collapse:collapse;margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+    th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line)}
+    th{color:var(--muted);font-size:.85rem;text-transform:uppercase;letter-spacing:.04em;background:#f7fafc}
+    tr:hover td{background:#f9fbfe}
     .err{background:#f8ecec;border:1px solid #e5c7c7;color:var(--danger);padding:10px 12px;border-radius:10px}
     .ok{background:var(--ok-bg);border:1px solid var(--ok-line);padding:10px 12px;border-radius:10px;color:var(--brand)}
     .muted{color:var(--muted)}
     .ideas{display:grid;gap:10px;margin:12px 0}
-    .idea{border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;background:#fff;text-align:left}
-    .idea:hover,.idea.sel{border-color:var(--brand);background:var(--ok-bg)}
+    .idea{border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;background:#fff;text-align:left;transition:transform .12s ease, border-color .12s ease, background .12s ease}
+    .idea:hover,.idea.sel{border-color:var(--brand);background:var(--ok-bg);transform:translateY(-1px)}
+    .idea:active{transform:scale(.99)}
     .idea strong{display:block;color:var(--brand);margin-bottom:4px}
-    .reglas-box{border:1px solid var(--line);border-radius:12px;padding:14px;background:linear-gradient(180deg,#f7fafc,#fff);margin:0 0 16px}
+    .reglas-box{border:1px solid var(--line);border-radius:14px;padding:16px;background:linear-gradient(180deg,#f7fafc,#fff);margin:0 0 18px;box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
     .reglas-box strong{display:block;color:var(--brand);margin-bottom:4px;font-family:Fraunces,Georgia,serif;font-size:1.05rem}
     .reglas-box .muted{display:block;margin-bottom:10px;font-size:.9rem}
     .reglas-box textarea{min-height:180px;font-family:"Source Sans 3",system-ui,sans-serif;font-size:.92rem;line-height:1.45}
     .logo-box{border:1px dashed var(--line);border-radius:12px;padding:16px;background:#fafbfd;display:grid;gap:10px;justify-items:start}
     .logo-box img{max-height:72px;max-width:220px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px}
     .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:8px}
-    .gallery figure{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;cursor:pointer}
+    .gallery figure{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;cursor:pointer;transition:transform .12s ease, outline .12s ease}
+    .gallery figure:hover{transform:translateY(-2px)}
+    .gallery figure:active{transform:scale(.98)}
     .gallery figure.sel{outline:2px solid var(--brand)}
     .gallery img{display:block;width:100%;height:80px;object-fit:cover}
     .gallery figcaption{font-size:.7rem;padding:6px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .chip{display:inline-block;font-size:.75rem;padding:2px 8px;border-radius:999px;background:var(--stat);color:var(--brand);margin-left:6px}
+    .preview-wrap{position:sticky;top:16px}
+    .preview-wrap h3{margin-top:0}
   </style>
 </head>
 <body>
@@ -205,15 +245,24 @@ export function paginaPlantillasHtml(): string {
     "Plantillas",
     "plantillas",
     `<section class="card">
-      <h2>Plantillas</h2>
-      <p class="lead">Aquí viven tus <strong>mails guardados</strong> de forma permanente en Hostinger. No se borran al actualizar el código: solo si los eliminas tú. Puedes abrir, reciclar o subir a Brevo.</p>
+      <div class="panel-hero">
+        <div>
+          <h2>Plantillas</h2>
+          <p class="lead">Tus <strong>mails guardados</strong> viven aquí de forma permanente. Ábrelos, recíclalos o elimínalos solo cuando tú lo decidas.</p>
+        </div>
+        <a class="btn sec" href="/panel/crear">Crear mail nuevo</a>
+      </div>
       <div id="msg"></div>
 
-      <h3 style="font-family:Fraunces,Georgia,serif;margin-top:8px">Mails guardados</h3>
-      <p class="muted">Elige el que más te guste, recíclalo (crea una copia) o elimínalo manualmente.</p>
-      <div id="biblioteca"></div>
+      <div class="section-block">
+        <h3>Mails guardados</h3>
+        <p class="muted">Elige el que más te guste. Reciclar crea una copia y deja el original intacto.</p>
+        <div id="biblioteca"></div>
+      </div>
 
-      <h3 style="font-family:Fraunces,Georgia,serif;margin-top:28px">Editor</h3>
+      <div class="section-block">
+        <h3>Editor</h3>
+        <p class="muted">Abre un mail de arriba o carga un tema base.</p>
       <div class="row">
         <label style="margin:0;font-weight:600;display:flex;gap:8px;align-items:center">
           Tema base
@@ -226,7 +275,7 @@ export function paginaPlantillasHtml(): string {
         </label>
         <button type="button" class="sec" id="btn-tema">Cargar tema</button>
         <button type="button" class="sec" id="btn-nuevo">Nuevo</button>
-        <button type="button" id="btn-guardar-mail">Guardar mail</button>
+        <button type="button" id="btn-guardar-mail" class="pulse">Guardar mail</button>
         <button type="button" class="sec" id="btn-aprobar">Aprobar a Brevo</button>
         <span id="estado" class="muted">sin mail abierto</span>
       </div>
@@ -242,13 +291,18 @@ export function paginaPlantillasHtml(): string {
           <label>htmlContent<textarea id="htmlContent" required></textarea></label>
         </form>
         <div>
-          <h3 style="font-family:Fraunces,Georgia,serif;margin-top:0">Pre-visualización</h3>
-          <iframe id="preview" title="Vista previa"></iframe>
+          <div class="preview-wrap">
+            <h3 style="font-family:Fraunces,Georgia,serif;margin-top:0">Pre-visualización</h3>
+            <iframe id="preview" title="Vista previa"></iframe>
+          </div>
         </div>
       </div>
-      <h3 style="font-family:Fraunces,Georgia,serif;margin-top:28px">Borradores temporales</h3>
-      <p class="muted">Solo apoyo interno. Lo importante son los «Mails guardados» de arriba.</p>
-      <div id="lista"></div>
+      </div>
+      <div class="section-block">
+        <h3>Borradores temporales</h3>
+        <p class="muted">Solo apoyo interno. Lo importante son los «Mails guardados» de arriba.</p>
+        <div id="lista"></div>
+      </div>
     </section>
     <script>
       const htmlContent = document.getElementById('htmlContent');
@@ -668,8 +722,18 @@ export function paginaCrearHtml(): string {
     "Crear mail",
     "crear",
     `<section class="card">
-      <h2>Crear mail</h2>
-      <p class="lead">Escribe en <strong>palabras normales</strong> qué debe decir el correo (a quién, qué ofrecer, qué enlazar). La IA lo convierte en HTML de plantilla. No necesitas escribir código. Plantillas, logos y reglas se guardan en Hostinger fuera del deploy para que no se borren al actualizar.</p>
+      <div class="panel-hero">
+        <div>
+          <h2>Crear mail</h2>
+          <p class="lead">Escribe qué quieres decir. El sistema arma la estructura (logo, navbar, blog, 8 productos y descuento) y tú solo revisas la vista previa.</p>
+        </div>
+        <a class="btn sec" href="/panel/plantillas">Ver mails guardados</a>
+      </div>
+      <div class="steps">
+        <div class="step"><span>1</span> Instrucciones</div>
+        <div class="step"><span>2</span> Generar</div>
+        <div class="step"><span>3</span> Guardar mail</div>
+      </div>
       <div id="msg"></div>
       <div class="reglas-box">
         <strong>Reglas fijas del correo (estructura)</strong>
@@ -683,46 +747,61 @@ export function paginaCrearHtml(): string {
       </div>
       <div class="grid">
         <div>
-          <label>Instrucciones del mail (lenguaje natural)
-            <textarea id="brief" style="font-family:inherit;min-height:140px" placeholder="Ejemplo: Quiero un mail para parejas que planean boda en Cancún en verano. Hablar de banquetes frente al mar, florería y fotografía. Que cotizen por WhatsApp y lean un artículo del blog sobre tendencias."></textarea>
-          </label>
-          <div class="row">
-            <button type="button" class="sec" id="btn-ideas">Ideas de temas (IA)</button>
-            <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0">
-              <input type="checkbox" id="genImg" checked/>
-              Generar imágenes nuevas si no hay compatibles
+          <div class="section-block">
+            <h3>1 · Qué debe decir el mail</h3>
+            <p class="muted">Lenguaje natural: a quién, qué ofrecer, qué enlazar.</p>
+            <label>Instrucciones del mail
+              <textarea id="brief" style="font-family:inherit;min-height:140px" placeholder="Ejemplo: Quiero un mail para parejas que planean boda en Cancún en verano. Hablar de banquetes frente al mar, florería y fotografía. Que cotizen por WhatsApp y lean un artículo del blog sobre tendencias."></textarea>
             </label>
+            <div class="row">
+              <button type="button" class="sec" id="btn-ideas">Ideas de temas (IA)</button>
+              <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0">
+                <input type="checkbox" id="genImg" checked/>
+                Generar imágenes nuevas si no hay compatibles
+              </label>
+            </div>
+            <div id="ideas" class="ideas"></div>
+            <label>Destino / tema<input id="destino" placeholder="Cancún, Posadas, CDMX…"/></label>
           </div>
-          <div id="ideas" class="ideas"></div>
-          <label>Destino / tema<input id="destino" placeholder="Cancún, Posadas, CDMX…"/></label>
-          <div class="logo-box">
-            <strong>Logo del mail</strong>
-            <span class="muted">Sube el logo que quieres usar. Se guarda para próximos correos.</span>
-            <input type="file" id="logoFile" accept="image/png,image/jpeg,image/svg+xml,image/webp"/>
-            <img id="logoPreview" alt="Logo" style="display:none"/>
-            <input type="hidden" id="logoId"/>
-            <div class="row" style="margin:0">
-              <button type="button" class="sec" id="btn-logo-lib">Elegir logo guardado</button>
+          <div class="section-block">
+            <h3>2 · Logo</h3>
+            <p class="muted">Se coloca arriba a la izquierda del correo.</p>
+            <div class="logo-box">
+              <input type="file" id="logoFile" accept="image/png,image/jpeg,image/svg+xml,image/webp"/>
+              <img id="logoPreview" alt="Logo" style="display:none"/>
+              <input type="hidden" id="logoId"/>
+              <div class="row" style="margin:0">
+                <button type="button" class="sec" id="btn-logo-lib">Elegir logo guardado</button>
+              </div>
             </div>
           </div>
-          <div class="row">
-            <button type="button" id="btn-generar">Generar borrador</button>
-            <button type="button" id="btn-guardar" disabled>Guardar mail</button>
-            <a class="sec" href="/panel/plantillas" style="display:inline-block;padding:11px 16px;border-radius:10px;text-decoration:none;border:1px solid var(--brand);color:var(--brand);font-weight:700;background:#fff">Ver mails guardados</a>
-            <span id="metaImg" class="muted"></span>
+          <div class="section-block">
+            <h3>3 · Generar y guardar</h3>
+            <p class="muted">Los botones bajan un poco al hacer clic para que notes que responden.</p>
+            <div class="row">
+              <button type="button" id="btn-generar" class="pulse">Generar borrador</button>
+              <button type="button" id="btn-guardar" disabled>Guardar mail</button>
+              <span id="metaImg" class="muted"></span>
+            </div>
+            <label>Asunto <span class="muted">(se genera solo)</span>
+              <input id="asunto" readonly placeholder="Se completa al generar el borrador"/>
+            </label>
+            <label>Nombre interno <span class="muted">(se genera solo)</span>
+              <input id="nombre" readonly placeholder="Se completa al generar el borrador"/>
+            </label>
           </div>
-          <label>Asunto <span class="muted">(se genera solo con tus instrucciones)</span>
-            <input id="asunto" readonly placeholder="Se completa al generar el borrador"/>
-          </label>
-          <label>Nombre interno <span class="muted">(se genera solo con tus instrucciones)</span>
-            <input id="nombre" readonly placeholder="Se completa al generar el borrador"/>
-          </label>
-          <h3 style="font-family:Fraunces,Georgia,serif">Biblioteca de imágenes</h3>
-          <div id="gallery" class="gallery"></div>
+          <div class="section-block">
+            <h3>Biblioteca de imágenes</h3>
+            <p class="muted">En el mismo mail no se repiten; sí se pueden reutilizar de otros correos.</p>
+            <div id="gallery" class="gallery"></div>
+          </div>
         </div>
         <div>
-          <h3 style="font-family:Fraunces,Georgia,serif;margin-top:0">Pre-visualización</h3>
-          <iframe id="preview" title="Vista previa"></iframe>
+          <div class="preview-wrap section-block">
+            <h3>Pre-visualización</h3>
+            <p class="muted">Así se verá el correo.</p>
+            <iframe id="preview" title="Vista previa"></iframe>
+          </div>
         </div>
       </div>
       <textarea id="htmlContent" style="display:none"></textarea>
@@ -898,9 +977,11 @@ export function paginaCrearHtml(): string {
           document.getElementById('metaImg').textContent =
             'Imágenes: ' + (data.imagenes?.reutilizadas||0) + ' reutilizadas, ' + (data.imagenes?.generadas||0) + ' nuevas';
           document.getElementById('btn-guardar').disabled = false;
+          document.getElementById('btn-guardar').classList.add('pulse');
+          document.getElementById('btn-generar').classList.remove('pulse');
           setMsg(true, data.advertencia
             ? ('Borrador listo. Asunto: «' + asunto + '». Avisos: ' + data.advertencia)
-            : ('Borrador listo. Asunto y nombre interno generados desde tus instrucciones.'));
+            : ('Borrador listo. Revisa la vista previa y pulsa Guardar mail.'));
           cargarGaleria();
         } catch (err) { setMsg(false, err.message || String(err)); }
         finally { btn.disabled = false; btn.textContent = 'Generar borrador'; }

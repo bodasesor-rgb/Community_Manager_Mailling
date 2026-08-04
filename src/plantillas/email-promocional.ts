@@ -12,6 +12,9 @@ export const COLORES_BODASESOR = {
   blanco: "#ffffff",
   texto: "#333333",
   muted: "#5a5a5a",
+  /** Verde oficial WhatsApp para CTAs de contacto. */
+  whatsapp: "#25D366",
+  whatsappTexto: "#ffffff",
 } as const;
 
 /** Escapa texto para insertarlo en HTML. */
@@ -115,26 +118,45 @@ export function escaparConPlaceholders(valor: string): string {
   return escaparHtml(valor);
 }
 
-function filaNav(items: NavItemPromocional[]): string {
-  if (items.length === 0) return "";
-  const links = items
+/**
+ * Cabecera: logo a la izquierda + marca (texto contrastante).
+ * Navbar en UNA sola línea; si hay «Cotizar», se omite para que quepa.
+ */
+function filaCabeceraYNav(
+  logoUrl: string,
+  items: NavItemPromocional[],
+): string {
+  const src = escaparConPlaceholders(logoUrl);
+  // Una sola línea: quitamos Cotizar (el CTA WhatsApp lo cubre).
+  const nav = items.filter(
+    (i) => !/^cotizar$/i.test(i.nombre.trim()),
+  );
+  const links = nav
     .map(
       (i) =>
-        `<a href="${escaparConPlaceholders(i.url)}" style="display:inline-block;margin:4px 8px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.3;color:${COLORES_BODASESOR.cream};text-decoration:none;border-bottom:1px solid ${COLORES_BODASESOR.gold};">${escaparConPlaceholders(i.nombre)}</a>`,
+        `<a href="${escaparConPlaceholders(i.url)}" style="display:inline-block;padding:0 7px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.2;font-weight:bold;letter-spacing:0.02em;color:${COLORES_BODASESOR.gold};text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent;">${escaparConPlaceholders(i.nombre)}</a>`,
     )
-    .join("");
-  return `<tr>
-  <td align="center" style="padding:14px 16px 8px;background:${COLORES_BODASESOR.navy};">
-    ${links}
-  </td>
-</tr>`;
-}
+    .join(
+      `<span style="color:rgba(201,168,76,0.35);font-size:11px;padding:0 1px;">·</span>`,
+    );
 
-function filaLogo(logoUrl: string): string {
-  const src = escaparConPlaceholders(logoUrl);
   return `<tr>
-  <td align="center" style="padding:16px 24px 20px;background:${COLORES_BODASESOR.navy};">
-    <img src="${src}" alt="Bodasesor" width="180" style="display:block;width:180px;max-width:70%;height:auto;border:0;"/>
+  <td style="padding:0;background:${COLORES_BODASESOR.navy};">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+      <tr>
+        <td align="left" valign="middle" style="padding:18px 20px 10px 20px;">
+          <img src="${src}" alt="Bodasesor" width="140" style="display:block;width:140px;max-width:46%;height:auto;border:0;"/>
+        </td>
+        <td align="right" valign="middle" style="padding:18px 20px 10px 8px;">
+          <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:13px;line-height:1.3;color:${COLORES_BODASESOR.gold};letter-spacing:0.04em;">Bodasesor Eventos</p>
+        </td>
+      </tr>
+      <tr>
+        <td colspan="2" align="center" style="padding:6px 10px 16px;border-top:1px solid rgba(201,168,76,0.28);white-space:nowrap;overflow:hidden;">
+          ${links}
+        </td>
+      </tr>
+    </table>
   </td>
 </tr>`;
 }
@@ -147,7 +169,7 @@ function filaHero(
   const src = escaparConPlaceholders(foto);
   const t = escaparConPlaceholders(titulo);
   const s = subtitulo
-    ? `<p style="margin:10px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.45;color:${COLORES_BODASESOR.cream};">${escaparConPlaceholders(subtitulo)}</p>`
+    ? `<p style="margin:10px 0 0;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.45;color:${COLORES_BODASESOR.gold};">${escaparConPlaceholders(subtitulo)}</p>`
     : "";
   return `<tr>
   <td style="padding:0;background:${COLORES_BODASESOR.navy};">
@@ -166,17 +188,18 @@ function filaSaludo(saludo: string): string {
   const cuerpo = escaparConPlaceholders(saludo).replace(/\n/g, "<br/>");
   return `<tr>
   <td style="padding:28px 32px 12px;background:${COLORES_BODASESOR.cream};">
-    <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:${COLORES_BODASESOR.texto};">${cuerpo}</p>
+    <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.65;color:${COLORES_BODASESOR.navy};">${cuerpo}</p>
   </td>
 </tr>`;
 }
 
-function filaCta(texto: string, url: string): string {
-  const t = escaparConPlaceholders(texto);
+/** CTA principal en verde WhatsApp. */
+function filaCtaWhatsApp(texto: string, url: string): string {
+  const t = escaparConPlaceholders(texto || "WhatsApp · Cotizar");
   const href = escaparConPlaceholders(url);
   return `<tr>
   <td align="center" style="padding:8px 32px 28px;background:${COLORES_BODASESOR.cream};">
-    <a href="${href}" style="display:inline-block;background:${COLORES_BODASESOR.gold};color:${COLORES_BODASESOR.navy};text-decoration:none;padding:14px 28px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;border-radius:4px;">${t}</a>
+    <a href="${href}" style="display:inline-block;background:${COLORES_BODASESOR.whatsapp};color:${COLORES_BODASESOR.whatsappTexto};text-decoration:none;padding:15px 30px;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;border-radius:28px;border:2px solid #1ebe57;">${t}</a>
   </td>
 </tr>`;
 }
@@ -274,14 +297,14 @@ function filaSocial(
   instagram: string,
   whatsapp: string,
 ): string {
-  const link = (href: string, label: string) =>
-    `<a href="${escaparConPlaceholders(href)}" style="display:inline-block;margin:0 10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${COLORES_BODASESOR.navy};text-decoration:none;border-bottom:1px solid ${COLORES_BODASESOR.gold};">${label}</a>`;
+  const link = (href: string, label: string, color?: string) =>
+    `<a href="${escaparConPlaceholders(href)}" style="display:inline-block;margin:0 8px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:${color || COLORES_BODASESOR.navy};text-decoration:none;border-bottom:2px solid ${color === COLORES_BODASESOR.whatsapp ? COLORES_BODASESOR.whatsapp : COLORES_BODASESOR.gold};">${label}</a>`;
   return `<tr>
   <td align="center" style="padding:24px 32px 8px;background:${COLORES_BODASESOR.cream};">
-    <p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:${COLORES_BODASESOR.muted};">Síguenos</p>
+    <p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:${COLORES_BODASESOR.navy};">Síguenos</p>
     ${link(facebook, "Facebook")}
     ${link(instagram, "Instagram")}
-    ${link(whatsapp, "WhatsApp")}
+    ${link(whatsapp, "WhatsApp", COLORES_BODASESOR.whatsapp)}
   </td>
 </tr>`;
 }
@@ -308,7 +331,7 @@ export function generarEmailPromocionalHtml(
   const destino = input.destino.trim() || "tu destino";
   const logoUrl = input.logoUrl ?? "[[LOGO]]";
   const heroFoto = input.heroFoto ?? "[[FOTO_HERO]]";
-  const ctaTexto = input.ctaTexto ?? "Cotizar mi evento";
+  const ctaTexto = input.ctaTexto ?? "WhatsApp · Cotizar mi evento";
   const ctaUrl = input.ctaUrl ?? "[[ENLACE_COTIZAR]]";
   const saludo =
     input.saludo ??
@@ -360,11 +383,10 @@ En Bodasesor preparamos experiencias inolvidables en ${destino}. Te compartimos 
     <tr>
       <td align="center" style="padding:0 12px;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;background:${COLORES_BODASESOR.blanco};">
-${filaNav(navItems)}
-${filaLogo(logoUrl)}
+${filaCabeceraYNav(logoUrl, navItems)}
 ${mostrarHero ? filaHero(heroFoto, input.heroTitulo, input.heroSubtitulo) : ""}
 ${filaSaludo(saludo)}
-${filaCta(ctaTexto, ctaUrl)}
+${filaCtaWhatsApp(ctaTexto, ctaUrl)}
 ${filaBlog(blog)}
 ${filaProductos(productos)}
 ${filaDescuento(descuento)}
