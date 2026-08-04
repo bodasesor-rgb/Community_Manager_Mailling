@@ -384,10 +384,10 @@ export function paginaSitioHtml(): string {
     "sitio",
     `<section class="card">
       <h2>Mi sitio (Bodasesor)</h2>
-      <p class="lead">Para que la IA enlace blog, productos y redes, necesitamos el mapa del sitio. El HTML de bodasesor.com a menudo bloquea bots (403); el <strong>sitemap sí se puede leer</strong>. Completa a mano Facebook, Instagram y WhatsApp.</p>
+      <p class="lead">Leemos <code>/llms.txt</code> y el sitemap de bodasesor.com (resumen, servicios, WhatsApp, blog). Si tienes Instagram/Facebook, pégalos abajo.</p>
       <div id="msg"></div>
       <div class="row">
-        <button type="button" id="btn-sync">Sincronizar sitemap</button>
+        <button type="button" id="btn-sync">Sincronizar sitio (llms + sitemap)</button>
         <button type="button" class="sec" id="btn-guardar">Guardar redes / URLs</button>
         <span id="meta" class="muted"></span>
       </div>
@@ -464,9 +464,9 @@ export function paginaSitioHtml(): string {
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || 'Sync falló');
           pintar(data.conocimiento);
-          setMsg(true, 'Sitemap leído: ' + data.productos + ' productos, ' + data.articulosBlog + ' artículos, ' + data.ciudades + ' ciudades.');
+          setMsg(true, 'Sitio sincronizado: ' + data.productos + ' servicios, ' + data.articulosBlog + ' artículos, WhatsApp/CTA listos.');
         } catch (err) { setMsg(false, err.message || String(err)); }
-        finally { btn.disabled = false; btn.textContent = 'Sincronizar sitemap'; }
+        finally { btn.disabled = false; btn.textContent = 'Sincronizar sitio (llms + sitemap)'; }
       };
 
       document.getElementById('btn-guardar').onclick = async () => {

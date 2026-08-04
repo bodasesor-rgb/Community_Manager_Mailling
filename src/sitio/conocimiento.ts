@@ -163,34 +163,125 @@ function slugATitulo(slug: string): string {
     .join(" ");
 }
 
+function userAgent(): string {
+  return (
+    process.env.SITIO_USER_AGENT?.trim() ||
+    "BodasesorMailingBot/1.0 (+https://bodasesor.com; panel-correos)"
+  );
+}
+
+async function fetchTexto(url: string): Promise<{ ok: boolean; status: number; texto: string }> {
+  const response = await fetch(url, {
+    headers: {
+      accept: "text/plain,text/html,application/xml,*/*",
+      "user-agent": userAgent(),
+    },
+  });
+  const texto = await response.text();
+  return { ok: response.ok, status: response.status, texto };
+}
+
+function parseLlmsTxt(
+  texto: string,
+  base: string,
+): {
+  resumen: string;
+  productos: ProductoSitio[];
+  whatsapp?: string;
+  telefono?: string;
+} {
+  const lineas = texto.split(/\r?\n/);
+  let resumen = "";
+  const productos: ProductoSitio[] = [];
+  let whatsapp: string | undefined;
+  let telefono: string | undefined;
+
+  for (const linea of lineas) {
+    const quote = linea.match(/^>\s*(.+)$/);
+    if (quote && !resumen) {
+      resumen = quote[1]!.trim();
+    }
+    const wa = linea.match(
+      /https?:\/\/api\.whatsapp\.com\/send\?[^\s)]+/i,
+    );
+    if (wa) {
+      whatsapp = wa[0]!.replace(/&amp;/g, "&");
+    }
+    const tel = linea.match(/\+52\s*[\d\s]+/);
+    if (tel && !telefono) {
+      telefono = tel[0]!.replace(/\s+/g, " ").trim();
+    }
+    const link = linea.match(
+      /^-\s*\[([^\]]+)\]\((https?:\/\/[^)]+)\):\s*(.+)$/,
+    );
+    if (link) {
+      const nombre = link[1]!.trim();
+      const url = link[2]!.trim();
+      const desc = link[3]!.trim();
+      if (!url.startsWith(base) && !url.includes("whatsapp")) {
+        continue;
+      }
+      if (url.includes("whatsapp")) continue;
+      const slug = url
+        .replace(base, "")
+        .replace(/^\//, "")
+        .split("/")[0] || nombre.toLowerCase().replace(/\s+/g, "-");
+      productos.push({
+        slug,
+        nombre,
+        url,
+        categoria: desc.slice(0, 80),
+      });
+    }
+  }
+
+  return {
+    resumen:
+      resumen ||
+      "Bodasesor: productora de eventos integrales en México.",
+    productos,
+    ...(whatsapp ? { whatsapp } : {}),
+    ...(telefono ? { telefono } : {}),
+  };
+}
+
 /**
- * Sincroniza productos/blog/ciudades desde sitemap.xml (no requiere HTML).
+ * Sincroniza conocimiento del sitio:
+ * 1) /llms.txt (abierto para nuestro bot: resumen, servicios, WhatsApp)
+ * 2) /sitemap.xml (blog + ciudades + catálogo amplio)
  */
 export async function sincronizarDesdeSitemap(
   baseUrl?: string,
 ): Promise<SitioConocimiento> {
   const actual = await leerConocimiento();
   const base = (baseUrl ?? actual.baseUrl).replace(/\/+$/, "");
-  const sitemapUrl = `${base}/sitemap.xml`;
-  const response = await fetch(sitemapUrl, {
-    headers: {
-      accept: "application/xml,text/xml,*/*",
-      "user-agent":
-        process.env.SITIO_USER_AGENT?.trim() ||
-        "BodasesorMailingBot/1.0 (+https://bodasesor.com; panel-correos)",
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`Sitemap ${response.status}: no se pudo leer ${sitemapUrl}`);
+
+  // --- llms.txt ---
+  const llms = await fetchTexto(`${base}/llms.txt`);
+  let desdeLlms: ReturnType<typeof parseLlmsTxt> | null = null;
+  if (llms.ok && llms.texto.includes("Bodasesor")) {
+    desdeLlms = parseLlmsTxt(llms.texto, base);
   }
-  const xml = await response.text();
-  const locs = [...xml.matchAll(/<loc>(https?:\/\/[^<]+)<\/loc>/gi)].map((m) =>
-    m[1]!.trim(),
+
+  // --- sitemap ---
+  const sm = await fetchTexto(`${base}/sitemap.xml`);
+  if (!sm.ok) {
+    throw new Error(`Sitemap ${sm.status}: no se pudo leer ${base}/sitemap.xml`);
+  }
+  const locs = [...sm.texto.matchAll(/<loc>(https?:\/\/[^<]+)<\/loc>/gi)].map(
+    (m) => m[1]!.trim(),
   );
 
   const ciudades = new Set<string>();
   const blog: ArticuloBlog[] = [];
   const porCategoria = new Map<string, ProductoSitio>();
+
+  // Preferir productos del llms.txt (mejores nombres/descripciones)
+  if (desdeLlms) {
+    for (const p of desdeLlms.productos) {
+      porCategoria.set(p.slug, p);
+    }
+  }
 
   for (const loc of locs) {
     if (!loc.startsWith(base)) continue;
@@ -199,18 +290,14 @@ export async function sincronizarDesdeSitemap(
     const parts = pathPart.split("/").filter(Boolean);
     const root = parts[0]!;
 
-    // Ciudades sueltas: /cancun
-    if (parts.length === 1 && !PRODUCTOS_SEMILLA.some((p) => p.slug === root)) {
-      const ciudadLike = /^[a-z0-9-]+$/i.test(root) && root.length < 40;
-      const knownCityRoots = new Set([
-        "acapulco","aguascalientes","cancun","ciudad-de-mexico","cozumel","cuernavaca",
-        "estado-de-mexico","guadalajara","leon","los-cabos","merida","monterrey","morelia",
-        "oaxaca","pachuca","puebla","puerto-vallarta","queretaro","san-luis-potosi",
-        "san-miguel-allende","tijuana","toluca","torreon","valle-de-bravo","veracruz",
-      ]);
-      if (ciudadLike && (knownCityRoots.has(root) || parts.length === 1)) {
-        if (knownCityRoots.has(root)) ciudades.add(slugATitulo(root));
-      }
+    const knownCityRoots = new Set([
+      "acapulco","aguascalientes","cancun","ciudad-de-mexico","cozumel","cuernavaca",
+      "estado-de-mexico","guadalajara","leon","los-cabos","merida","monterrey","morelia",
+      "oaxaca","pachuca","puebla","puerto-vallarta","queretaro","san-luis-potosi",
+      "san-miguel-allende","tijuana","toluca","torreon","valle-de-bravo","veracruz",
+    ]);
+    if (parts.length === 1 && knownCityRoots.has(root)) {
+      ciudades.add(slugATitulo(root));
     }
 
     if (root === "blog") {
@@ -227,7 +314,7 @@ export async function sincronizarDesdeSitemap(
     }
 
     const semilla = PRODUCTOS_SEMILLA.find((p) => p.slug === root);
-    if (semilla && parts.length === 1) {
+    if (semilla && parts.length === 1 && !porCategoria.has(root)) {
       porCategoria.set(root, {
         slug: root,
         nombre: semilla.nombre,
@@ -237,7 +324,6 @@ export async function sincronizarDesdeSitemap(
     }
   }
 
-  // Asegurar semillas aunque no estén como URL depth-1
   for (const p of PRODUCTOS_SEMILLA) {
     if (!porCategoria.has(p.slug)) {
       porCategoria.set(p.slug, {
@@ -247,19 +333,36 @@ export async function sincronizarDesdeSitemap(
     }
   }
 
+  const whatsapp =
+    desdeLlms?.whatsapp ||
+    actual.redes.whatsapp ||
+    "https://api.whatsapp.com/send?phone=5215540080373&text=Hola%2C%20me%20gustar%C3%ADa%20cotizar%20un%20evento";
+
   return guardarConocimiento({
     ...actual,
     baseUrl: base,
+    resumen: desdeLlms?.resumen || actual.resumen,
+    cotizarUrl: whatsapp,
     productos: [...porCategoria.values()].sort((a, b) =>
       a.nombre.localeCompare(b.nombre, "es"),
     ),
     articulosBlog: blog,
     ciudades: [...ciudades].sort((a, b) => a.localeCompare(b, "es")),
     blogUrl: `${base}/blog`,
+    redes: {
+      ...actual.redes,
+      whatsapp,
+    },
     sitemapSyncEn: new Date().toISOString(),
     sitemapTotalUrls: locs.length,
-    notas:
-      "Productos/blog desde sitemap. Completa Facebook/Instagram/WhatsApp en el panel. Para leer textos completos de páginas, permite el User-Agent BodasesorMailingBot en el firewall/WAF del sitio.",
+    notas: [
+      llms.ok
+        ? "llms.txt leído OK (resumen + servicios + WhatsApp)."
+        : `llms.txt no disponible (${llms.status}).`,
+      "Sitemap OK para blog/ciudades.",
+      "HTML de muchas páginas aún puede dar 403 a bots; llms.txt y sitemap bastan para armar mails con enlaces reales.",
+      "Si tienes Instagram/Facebook, pégalos en el panel (no aparecen en llms.txt).",
+    ].join(" "),
   });
 }
 
