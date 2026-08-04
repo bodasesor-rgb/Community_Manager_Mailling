@@ -1,10 +1,10 @@
 /**
  * Ajustes puntuales sobre un mail ya generado.
- * No regenera todo: aplica solo los cambios que pide el usuario.
+ * Aplica parches (buscar/reemplazar) sobre el HTML original:
+ * nunca regenera el correo desde cero.
  */
 
 import { generarTextoGemini } from "../gemini/cliente-texto.js";
-import { leerReglasComposer } from "../panel/reglas-composer.js";
 
 export interface AjustarEmailInput {
   htmlContent: string;
@@ -22,21 +22,37 @@ export interface AjustarEmailResultado {
   cambiosAplicados: string;
 }
 
-function limpiarHtml(texto: string): string {
-  let t = texto.trim();
-  t = t.replace(/^```(?:html)?\s*/i, "").replace(/\s*```$/i, "");
-  const start = t.search(/<!DOCTYPE html|<html[\s>]/i);
-  if (start > 0) t = t.slice(start);
-  const end = t.toLowerCase().lastIndexOf("</html>");
-  if (end >= 0) t = t.slice(0, end + "</html>".length);
-  return t.trim();
-}
-
 function limpiarJson(texto: string): string {
   return texto
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
+}
+
+interface Parche {
+  buscar: string;
+  reemplazar: string;
+}
+
+function aplicarParches(
+  html: string,
+  parches: Parche[],
+): { html: string; aplicados: string[]; fallidos: string[] } {
+  let out = html;
+  const aplicados: string[] = [];
+  const fallidos: string[] = [];
+  for (const p of parches) {
+    const buscar = (p.buscar || "").trim();
+    if (!buscar || p.reemplazar === undefined) continue;
+    if (!out.includes(buscar)) {
+      fallidos.push(buscar.slice(0, 80));
+      continue;
+    }
+    // Solo la primera coincidencia por parche (cambio puntual)
+    out = out.replace(buscar, p.reemplazar);
+    aplicados.push(`«${buscar.slice(0, 60)}» → «${String(p.reemplazar).slice(0, 60)}»`);
+  }
+  return { html: out, aplicados, fallidos };
 }
 
 export async function ajustarEmail(
@@ -46,98 +62,138 @@ export async function ajustarEmail(
   if (!mods) {
     throw new Error("Escribe qué quieres modificar");
   }
-  const html = input.htmlContent.trim();
-  if (!html || html.length < 40) {
+  const htmlOriginal = input.htmlContent.trim();
+  if (!htmlOriginal || htmlOriginal.length < 40) {
     throw new Error("Primero genera un borrador para poder ajustar");
   }
 
-  const reglas = await leerReglasComposer();
   const asuntoActual = (input.asunto || "").trim();
   const nombreActual = (input.nombre || "").trim();
 
-  const prompt = `Eres editor de emails HTML de Bodasesor. Debes aplicar SOLO cambios puntuales.
+  // Fragmentos útiles del HTML para que el modelo copie texto exacto a buscar
+  const extractos: string[] = [];
+  const h1 = htmlOriginal.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (h1) extractos.push(`TITULAR: ${h1[1].replace(/<[^>]+>/g, "").trim()}`);
+  const paras = [...htmlOriginal.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)]
+    .map((m) => m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim())
+    .filter((t) => t.length > 20 && t.length < 280)
+    .slice(0, 8);
+  for (const p of paras) extractos.push(`TEXTO: ${p}`);
 
-MODIFICACIONES QUE PIDE EL USUARIO (obedécelas al pie de la letra):
-"""
-${mods.slice(0, 3000)}
-"""
+  const prompt = `Eres un editor CIRUJANO de emails HTML. NO reescribas el correo.
+Solo propones reemplazos exactos (buscar → reemplazar) sobre el HTML existente.
 
-${input.instruccionesOriginales?.trim() ? `Contexto original del mail:\n"""\n${input.instruccionesOriginales.trim().slice(0, 1500)}\n"""\n` : ""}
-Reglas estructurales a preservar (no las rompas salvo que el usuario lo pida):
+PEDIDO DEL USUARIO:
 """
-${reglas.texto.slice(0, 2500)}
+${mods.slice(0, 2500)}
 """
 
 Asunto actual: ${asuntoActual || "(vacío)"}
 Nombre interno actual: ${nombreActual || "(vacío)"}
+${input.instruccionesOriginales?.trim() ? `Brief original: ${input.instruccionesOriginales.trim().slice(0, 800)}\n` : ""}
 
-HTML actual del email:
-"""
-${html.slice(0, 120000)}
-"""
+Fragmentos del HTML actual (usa estos textos EXACTOS en "buscar" cuando aplique):
+${extractos.map((e) => `- ${e}`).join("\n")}
 
-Devuelve SOLO un JSON válido (sin markdown) con esta forma:
+Devuelve SOLO JSON válido:
 {
-  "htmlContent": "<!DOCTYPE html>...HTML completo actualizado...",
-  "asunto": "asunto (cámbialo solo si el usuario lo pidió; si no, deja el mismo)",
-  "nombre": "nombre interno (cámbialo solo si el usuario lo pidió; si no, deja el mismo)",
-  "cambiosAplicados": "lista corta de lo que cambiaste"
+  "parches": [
+    { "buscar": "texto EXACTO que ya existe en el HTML (sin inventar)", "reemplazar": "texto nuevo" }
+  ],
+  "asunto": "igual al actual salvo que el usuario pida cambiarlo",
+  "nombre": "igual al actual salvo que el usuario pida cambiarlo",
+  "cambiosAplicados": "resumen corto"
 }
 
-Reglas de edición:
-- Cambia ÚNICAMENTE lo que el usuario pidió. No reescribas el mail completo ni inventes secciones nuevas.
-- Conserva navbar, logo, blog, productos, descuento MAILING10, botón WhatsApp verde y estilos inline, salvo que el usuario pida lo contrario.
-- Mantén tablas y CSS inline compatibles con Brevo/email.
-- No uses emojis.
-- htmlContent debe ser el documento HTML completo (empieza con <!DOCTYPE html> o <html>).`;
+Reglas OBLIGATORIAS:
+- Máximo 8 parches. Solo lo pedido.
+- "buscar" DEBE ser un substring que ya existe en el HTML (copia literal).
+- NUNCA devuelvas el HTML completo.
+- No borres secciones (navbar, logo, blog, productos, descuento, WhatsApp, redes).
+- Si el usuario pide cambiar asunto/nombre, hazlo en esos campos; no hace falta parche HTML.
+- Sin emojis. Sin markdown.`;
 
   const { modelo, texto } = await generarTextoGemini({
     prompt,
-    temperature: 0.25,
-    maxOutputTokens: 8192,
+    temperature: 0.15,
+    maxOutputTokens: 2048,
     responseMimeType: "application/json",
   });
 
   let parsed: {
-    htmlContent?: string;
+    parches?: Parche[];
     asunto?: string;
     nombre?: string;
     cambiosAplicados?: string;
+    htmlContent?: string;
   };
   try {
     parsed = JSON.parse(limpiarJson(texto)) as typeof parsed;
   } catch {
-    // Si el modelo devolvió HTML crudo, úsalo como ajuste.
-    const htmlOnly = limpiarHtml(texto);
-    if (htmlOnly.toLowerCase().includes("<html")) {
-      return {
-        htmlContent: htmlOnly,
-        asunto: asuntoActual || "Bodasesor",
-        nombre: nombreActual || asuntoActual || "Bodasesor",
-        modeloTexto: modelo,
-        cambiosAplicados: mods.slice(0, 200),
-      };
-    }
     throw new Error("No se pudo interpretar el ajuste de la IA");
   }
 
-  const htmlNuevo = limpiarHtml(parsed.htmlContent || "");
-  if (!htmlNuevo.toLowerCase().includes("<html")) {
-    throw new Error("El ajuste no devolvió HTML válido");
+  // Si el modelo (mal) devolvió HTML completo truncado, IGNORARLO y no destruir el mail.
+  if (parsed.htmlContent && (!parsed.parches || parsed.parches.length === 0)) {
+    throw new Error(
+      "El ajuste intentó reescribir todo el mail. Escribe el cambio de forma más puntual (ej. «cambia el asunto a…», «en el saludo di…»).",
+    );
   }
 
-  const asunto = (parsed.asunto || asuntoActual || "Bodasesor").trim();
-  const nombre = (parsed.nombre || nombreActual || `Bodasesor · ${asunto}`)
+  const parches = (parsed.parches ?? []).filter(
+    (p) => typeof p?.buscar === "string" && typeof p?.reemplazar === "string",
+  );
+  const { html: htmlParcheado, aplicados, fallidos } = aplicarParches(
+    htmlOriginal,
+    parches,
+  );
+
+  // Seguridad: el HTML no puede encogerse demasiado
+  if (htmlParcheado.length < htmlOriginal.length * 0.55) {
+    throw new Error(
+      "El ajuste habría borrado demasiado contenido; no se aplicó. Intenta un cambio más específico.",
+    );
+  }
+
+  let asunto = (parsed.asunto || asuntoActual || "Bodasesor").trim();
+  let nombre = (parsed.nombre || nombreActual || `Bodasesor · ${asunto}`)
     .replace(/\s+/g, " ")
     .slice(0, 80)
     .trim();
 
+  // Si el usuario pidió cambio de asunto en el texto y el modelo no lo cambió, intentar detectarlo
+  const mAsunto = mods.match(
+    /asunto\s*(?:a|por|:)?\s*[«"']?([^«"'\n]+)[»"']?/i,
+  );
+  if (mAsunto?.[1] && /asunto/i.test(mods) && asunto === asuntoActual) {
+    asunto = mAsunto[1].trim().slice(0, 90);
+    if (!nombreActual || nombre === nombreActual) {
+      nombre = (asunto.toLowerCase().startsWith("bodasesor")
+        ? asunto
+        : `Bodasesor · ${asunto}`
+      ).slice(0, 80);
+    }
+  }
+
+  if (aplicados.length === 0 && asunto === asuntoActual && fallidos.length > 0) {
+    throw new Error(
+      `No encontré en el mail el texto a cambiar. Sé más literal (copia una frase del preview). Falló buscar: ${fallidos[0]}`,
+    );
+  }
+
+  const resumen =
+    (parsed.cambiosAplicados || "").trim() ||
+    (aplicados.length
+      ? `Aplicados ${aplicados.length} cambio(s).`
+      : asunto !== asuntoActual
+        ? `Asunto actualizado a «${asunto}».`
+        : "Sin cambios detectados.");
+
   return {
-    htmlContent: htmlNuevo,
+    htmlContent: htmlParcheado,
     asunto,
     nombre,
     modeloTexto: modelo,
-    cambiosAplicados:
-      (parsed.cambiosAplicados || mods).trim().slice(0, 500),
+    cambiosAplicados: resumen.slice(0, 500),
   };
 }

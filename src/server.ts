@@ -1049,7 +1049,12 @@ const servidor = http.createServer((req, res) => {
             });
             return;
           }
-          const htmlContent = generarEmailPromocionalHtml(tema);
+          const base = baseUrlDesdeRequest(req);
+          const htmlContent = generarEmailPromocionalHtml({
+            ...tema,
+            assetsBaseUrl: base,
+            logoUrl: tema.logoUrl || `${base}/assets/logo-white.svg`,
+          });
           enviarJson(res, 200, {
             htmlContent,
             asunto: `Bodasesor · ${tema.destino}`,
@@ -1058,7 +1063,11 @@ const servidor = http.createServer((req, res) => {
           return;
         }
         if (body.promocional?.destino && body.promocional.heroTitulo) {
-          const htmlContent = generarEmailPromocionalHtml(body.promocional);
+          const base = baseUrlDesdeRequest(req);
+          const htmlContent = generarEmailPromocionalHtml({
+            ...body.promocional,
+            assetsBaseUrl: base,
+          });
           enviarJson(res, 200, { htmlContent });
           return;
         }
@@ -1122,7 +1131,12 @@ const servidor = http.createServer((req, res) => {
             });
             return;
           }
-          const htmlContent = generarEmailPromocionalHtml(tema);
+          const base = baseUrlDesdeRequest(req);
+          const htmlContent = generarEmailPromocionalHtml({
+            ...tema,
+            assetsBaseUrl: base,
+            logoUrl: tema.logoUrl || `${base}/assets/logo-white.svg`,
+          });
           enviarJson(res, 200, {
             htmlContent,
             asunto: `Bodasesor · ${tema.destino}`,
@@ -1133,10 +1147,13 @@ const servidor = http.createServer((req, res) => {
         }
         if (body.destino?.trim()) {
           const destino = body.destino.trim();
+          const base = baseUrlDesdeRequest(req);
           const htmlContent = generarEmailPromocionalHtml({
             destino,
             heroTitulo: `${destino} te espera para celebrar`,
             heroSubtitulo: "Experiencias Bodasesor pensadas para tu evento",
+            assetsBaseUrl: base,
+            logoUrl: `${base}/assets/logo-white.svg`,
           });
           enviarJson(res, 200, {
             htmlContent,

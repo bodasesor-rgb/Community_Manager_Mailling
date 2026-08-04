@@ -98,6 +98,11 @@ export interface EmailPromocionalInput {
   descuento?: DescuentoPromocional;
   /** Si false, omite hero grande (estilo más web). Default true. */
   mostrarHero?: boolean;
+  /**
+   * Base absoluta del panel (https://…) para logo por defecto e iconos
+   * de redes alojados en /assets/.
+   */
+  assetsBaseUrl?: string;
 }
 
 const PLACEHOLDER = /^\[\[.+\]\]$/;
@@ -119,22 +124,19 @@ export function escaparConPlaceholders(valor: string): string {
 }
 
 /**
- * Cabecera: logo a la izquierda + marca (texto contrastante).
- * Navbar en UNA sola línea; si hay «Cotizar», se omite para que quepa.
+ * Cabecera: logo a la izquierda (bien visible) + marca contrastante.
+ * Navbar en UNA sola línea; se omite «Cotizar» para que quepa.
  */
 function filaCabeceraYNav(
   logoUrl: string,
   items: NavItemPromocional[],
 ): string {
   const src = escaparConPlaceholders(logoUrl);
-  // Una sola línea: quitamos Cotizar (el CTA WhatsApp lo cubre).
-  const nav = items.filter(
-    (i) => !/^cotizar$/i.test(i.nombre.trim()),
-  );
+  const nav = items.filter((i) => !/^cotizar$/i.test(i.nombre.trim()));
   const links = nav
     .map(
       (i) =>
-        `<a href="${escaparConPlaceholders(i.url)}" style="display:inline-block;padding:0 7px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.2;font-weight:bold;letter-spacing:0.02em;color:${COLORES_BODASESOR.gold};text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent;">${escaparConPlaceholders(i.nombre)}</a>`,
+        `<a href="${escaparConPlaceholders(i.url)}" style="display:inline-block;padding:0 7px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.2;font-weight:bold;letter-spacing:0.02em;color:${COLORES_BODASESOR.gold};text-decoration:none;white-space:nowrap;">${escaparConPlaceholders(i.nombre)}</a>`,
     )
     .join(
       `<span style="color:rgba(201,168,76,0.35);font-size:11px;padding:0 1px;">·</span>`,
@@ -144,15 +146,18 @@ function filaCabeceraYNav(
   <td style="padding:0;background:${COLORES_BODASESOR.navy};">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
       <tr>
-        <td align="left" valign="middle" style="padding:18px 20px 10px 20px;">
-          <img src="${src}" alt="Bodasesor" width="140" style="display:block;width:140px;max-width:46%;height:auto;border:0;"/>
+        <td align="left" valign="middle" width="55%" style="padding:16px 12px 12px 20px;">
+          <a href="https://bodasesor.com/" style="text-decoration:none;">
+            <img src="${src}" alt="Bodasesor" width="160" height="auto" style="display:block;width:160px;max-width:100%;height:auto;border:0;outline:none;"/>
+          </a>
         </td>
-        <td align="right" valign="middle" style="padding:18px 20px 10px 8px;">
-          <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:13px;line-height:1.3;color:${COLORES_BODASESOR.gold};letter-spacing:0.04em;">Bodasesor Eventos</p>
+        <td align="right" valign="middle" width="45%" style="padding:16px 20px 12px 8px;">
+          <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:14px;line-height:1.35;color:${COLORES_BODASESOR.gold};letter-spacing:0.03em;">Bodasesor Eventos</p>
+          <p style="margin:4px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:1.3;color:${COLORES_BODASESOR.cream};opacity:0.9;">bodas y eventos</p>
         </td>
       </tr>
       <tr>
-        <td colspan="2" align="center" style="padding:6px 10px 16px;border-top:1px solid rgba(201,168,76,0.28);white-space:nowrap;overflow:hidden;">
+        <td colspan="2" align="center" style="padding:8px 10px 14px;border-top:1px solid rgba(201,168,76,0.28);white-space:nowrap;">
           ${links}
         </td>
       </tr>
@@ -296,15 +301,23 @@ function filaSocial(
   facebook: string,
   instagram: string,
   whatsapp: string,
+  assetsBaseUrl?: string,
 ): string {
-  const link = (href: string, label: string, color?: string) =>
-    `<a href="${escaparConPlaceholders(href)}" style="display:inline-block;margin:0 8px;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:bold;color:${color || COLORES_BODASESOR.navy};text-decoration:none;border-bottom:2px solid ${color === COLORES_BODASESOR.whatsapp ? COLORES_BODASESOR.whatsapp : COLORES_BODASESOR.gold};">${label}</a>`;
+  const base = (assetsBaseUrl || "").replace(/\/+$/, "");
+  const icon = (href: string, src: string, alt: string) => {
+    const imgSrc = base
+      ? `${base}/assets/${src}`
+      : `/assets/${src}`;
+    return `<a href="${escaparConPlaceholders(href)}" target="_blank" style="display:inline-block;margin:0 10px;text-decoration:none;border:0;">
+      <img src="${escaparConPlaceholders(imgSrc)}" alt="${escaparHtml(alt)}" width="36" height="36" style="display:block;width:36px;height:36px;border:0;outline:none;"/>
+    </a>`;
+  };
   return `<tr>
-  <td align="center" style="padding:24px 32px 8px;background:${COLORES_BODASESOR.cream};">
-    <p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:${COLORES_BODASESOR.navy};">Síguenos</p>
-    ${link(facebook, "Facebook")}
-    ${link(instagram, "Instagram")}
-    ${link(whatsapp, "WhatsApp", COLORES_BODASESOR.whatsapp)}
+  <td align="center" style="padding:26px 32px 10px;background:${COLORES_BODASESOR.cream};">
+    <p style="margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:0.06em;text-transform:uppercase;color:${COLORES_BODASESOR.navy};">Síguenos</p>
+    ${icon(facebook, "icon-facebook.png", "Facebook")}
+    ${icon(instagram, "icon-instagram.png", "Instagram")}
+    ${icon(whatsapp, "icon-whatsapp.png", "WhatsApp")}
   </td>
 </tr>`;
 }
@@ -329,7 +342,13 @@ export function generarEmailPromocionalHtml(
   input: EmailPromocionalInput,
 ): string {
   const destino = input.destino.trim() || "tu destino";
-  const logoUrl = input.logoUrl ?? "[[LOGO]]";
+  const assetsBase = (input.assetsBaseUrl || "").replace(/\/+$/, "");
+  const logoUrl =
+    input.logoUrl && !input.logoUrl.includes("[[LOGO]]")
+      ? input.logoUrl
+      : assetsBase
+        ? `${assetsBase}/assets/logo-white.svg`
+        : "[[LOGO]]";
   const heroFoto = input.heroFoto ?? "[[FOTO_HERO]]";
   const ctaTexto = input.ctaTexto ?? "WhatsApp · Cotizar mi evento";
   const ctaUrl = input.ctaUrl ?? "[[ENLACE_COTIZAR]]";
@@ -366,6 +385,19 @@ En Bodasesor preparamos experiencias inolvidables en ${destino}. Te compartimos 
     } satisfies DescuentoPromocional);
   const mostrarHero = input.mostrarHero !== false;
 
+  const facebookUrl =
+    input.facebookUrl && !input.facebookUrl.includes("[[")
+      ? input.facebookUrl
+      : "https://www.facebook.com/";
+  const instagramUrl =
+    input.instagramUrl && !input.instagramUrl.includes("[[")
+      ? input.instagramUrl
+      : "https://www.instagram.com/";
+  const whatsappUrl =
+    input.whatsappUrl && !input.whatsappUrl.includes("[[")
+      ? input.whatsappUrl
+      : "https://api.whatsapp.com/send?phone=5215540080373";
+
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -391,11 +423,7 @@ ${filaBlog(blog)}
 ${filaProductos(productos)}
 ${filaDescuento(descuento)}
 ${filaUrgencia(urgencia)}
-${filaSocial(
-  input.facebookUrl ?? "[[ENLACE_FACEBOOK]]",
-  input.instagramUrl ?? "[[ENLACE_INSTAGRAM]]",
-  input.whatsappUrl ?? "[[ENLACE_WHATSAPP]]",
-)}
+${filaSocial(facebookUrl, instagramUrl, whatsappUrl, assetsBase)}
 ${filaFooter(pieLegal)}
         </table>
       </td>
