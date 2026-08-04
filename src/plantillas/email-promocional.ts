@@ -347,7 +347,10 @@ export function generarEmailPromocionalHtml(
         : "[[LOGO]]";
   const heroFoto = input.heroFoto ?? "[[FOTO_HERO]]";
   const ctaTexto = input.ctaTexto ?? "WhatsApp · Cotizar mi evento";
-  const ctaUrl = input.ctaUrl ?? "[[ENLACE_COTIZAR]]";
+  const ctaUrl =
+    input.ctaUrl && !input.ctaUrl.includes("[[")
+      ? input.ctaUrl
+      : "https://api.whatsapp.com/send?phone=5215540080373&text=Hola%2C%20vi%20tu%20correo%20y%20me%20gustar%C3%ADa%20cotizar%20un%20evento";
   const saludo =
     input.saludo ??
     `Hola {{ contact.FIRSTNAME }},
@@ -370,7 +373,24 @@ En Bodasesor preparamos experiencias inolvidables en ${destino}. Te compartimos 
       url: "[[ENLACE_BLOG]]",
     } satisfies BlogPromocional);
 
-  const navItems = input.navItems ?? [];
+  const navItems =
+    input.navItems && input.navItems.length > 0
+      ? input.navItems
+      : [
+          { nombre: "Inicio", url: "https://bodasesor.com/" },
+          { nombre: "Bodas", url: "https://bodasesor.com/bodas" },
+          { nombre: "XV años", url: "https://bodasesor.com/xv-anos" },
+          {
+            nombre: "Corporativos",
+            url: "https://bodasesor.com/eventos-corporativos",
+          },
+          {
+            nombre: "Servicios",
+            url: "https://bodasesor.com/banquetes-catering",
+          },
+          { nombre: "Blog", url: "https://bodasesor.com/blog" },
+          { nombre: "Galería", url: "https://bodasesor.com/galeria" },
+        ];
   const descuento =
     input.descuento ??
     ({
