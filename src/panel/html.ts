@@ -791,6 +791,7 @@ export function paginaCrearHtml(): string {
             <div class="row">
               <button type="button" id="btn-generar" class="pulse">Generar borrador</button>
               <button type="button" id="btn-guardar" disabled>Guardar mail</button>
+              <span id="genEta" class="chip" style="display:none">--:--</span>
               <span id="metaImg" class="muted"></span>
             </div>
             <label>Asunto <span class="muted">(se genera solo)</span>
@@ -808,6 +809,7 @@ export function paginaCrearHtml(): string {
             </label>
             <div class="row" style="margin:0">
               <button type="button" class="sec" id="btn-ajustar" disabled>Aplicar modificaciones</button>
+              <span id="modsEta" class="chip" style="display:none">--:--</span>
               <span id="modsMeta" class="muted">Disponible cuando haya un borrador generado.</span>
             </div>
           </div>
@@ -834,6 +836,32 @@ export function paginaCrearHtml(): string {
       const preview = document.getElementById('preview');
       function setMsg(ok, text){ msg.innerHTML = '<div class="' + (ok?'ok':'err') + '">' + escapeHtml(text) + '</div>'; }
       function escapeHtml(s){return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+      function fmtEta(seg){
+        const s = Math.max(0, Math.ceil(seg));
+        const m = Math.floor(s / 60);
+        const r = String(s % 60).padStart(2, '0');
+        return m + ':' + r;
+      }
+      function startCountdown(elId, segundos, label){
+        const el = document.getElementById(elId);
+        if (!el) return function(){};
+        let restante = segundos;
+        el.style.display = 'inline-block';
+        el.textContent = label + ' ' + fmtEta(restante);
+        const timer = setInterval(function(){
+          restante -= 1;
+          if (restante <= 0) {
+            el.textContent = label + ' casi listo…';
+            return;
+          }
+          el.textContent = label + ' ' + fmtEta(restante);
+        }, 1000);
+        return function stop(finalText){
+          clearInterval(timer);
+          if (finalText) { el.textContent = finalText; }
+          else { el.style.display = 'none'; el.textContent = ''; }
+        };
+      }
 
       async function cargarReglas(){
         const res = await fetch('/api/composer/reglas');
@@ -903,6 +931,9 @@ export function paginaCrearHtml(): string {
         if (!brief) { setMsg(false, 'Escribe primero qué quieres en el mail.'); return; }
         const btn = document.getElementById('btn-ideas');
         btn.disabled = true; btn.textContent = 'Pensando ideas…';
+        setMsg(true, 'Generando 4 ideas nuevas…');
+        const stopEta = startCountdown('genEta', 20, 'Quedan');
+        const t0 = Date.now();
         try {
           const res = await fetch('/api/ideas-temas', {
             method:'POST', headers:{'content-type':'application/json'},
@@ -927,8 +958,13 @@ export function paginaCrearHtml(): string {
               setMsg(true, 'Tema elegido: ' + i.titulo);
             };
           });
-          setMsg(true, '4 ideas listas. Elige una o sigue con tu brief.');
-        } catch (err) { setMsg(false, err.message || String(err)); }
+          const segs = Math.round((Date.now() - t0) / 1000);
+          stopEta('Ideas en ' + fmtEta(segs));
+          setMsg(true, '4 ideas nuevas listas. Elige una o sigue con tu brief.');
+        } catch (err) {
+          stopEta();
+          setMsg(false, err.message || String(err));
+        }
         finally { btn.disabled = false; btn.textContent = 'Ideas de temas (IA)'; }
       };
 
@@ -971,14 +1007,20 @@ export function paginaCrearHtml(): string {
         const brief = document.getElementById('brief').value.trim();
         if (!brief) { setMsg(false, 'Escribe el brief del mail.'); return; }
         const btn = document.getElementById('btn-generar');
+        const conImg = document.getElementById('genImg').checked;
+        const etaSeg = conImg ? 90 : 45;
         btn.disabled = true; btn.textContent = 'Generando…';
         document.getElementById('btn-guardar').disabled = true;
+        document.getElementById('btn-ajustar').disabled = true;
+        setMsg(true, 'Generando borrador… tiempo estimado restante a la derecha del botón.');
+        const stopEta = startCountdown('genEta', etaSeg, 'Quedan');
+        const t0 = Date.now();
         try {
           const body = {
             brief,
             destino: document.getElementById('destino').value.trim() || undefined,
             logoId: document.getElementById('logoId').value || undefined,
-            generarImagenes: document.getElementById('genImg').checked,
+            generarImagenes: conImg,
             ideaTitulo: ideaSel ? ideaSel.titulo : undefined
           };
           const res = await fetch('/api/composer/generar', {
@@ -995,18 +1037,23 @@ export function paginaCrearHtml(): string {
           document.getElementById('nombre').value = nombre;
           if (!asunto) throw new Error('La IA no devolvió asunto; revisa el modelo Gemini.');
           preview.srcdoc = data.htmlContent;
+          const segs = Math.round((Date.now() - t0) / 1000);
           document.getElementById('metaImg').textContent =
-            'Imágenes: ' + (data.imagenes?.reutilizadas||0) + ' reutilizadas, ' + (data.imagenes?.generadas||0) + ' nuevas';
+            'Imágenes: ' + (data.imagenes?.reutilizadas||0) + ' reutilizadas, ' + (data.imagenes?.generadas||0) + ' nuevas · ' + segs + 's';
           document.getElementById('btn-guardar').disabled = false;
           document.getElementById('btn-guardar').classList.add('pulse');
           document.getElementById('btn-generar').classList.remove('pulse');
           document.getElementById('btn-ajustar').disabled = false;
           document.getElementById('modsMeta').textContent = 'Listo: escribe el cambio y pulsa Aplicar modificaciones.';
+          stopEta('Listo en ' + fmtEta(segs));
           setMsg(true, data.advertencia
             ? ('Borrador listo. Asunto: «' + asunto + '». Avisos: ' + data.advertencia)
             : ('Borrador listo. Revisa la vista previa. Si algo no te gusta, usa Modificaciones.'));
           cargarGaleria();
-        } catch (err) { setMsg(false, err.message || String(err)); }
+        } catch (err) {
+          stopEta();
+          setMsg(false, err.message || String(err));
+        }
         finally { btn.disabled = false; btn.textContent = 'Generar borrador'; }
       };
 
@@ -1017,6 +1064,9 @@ export function paginaCrearHtml(): string {
         if (!mods) { setMsg(false, 'Escribe qué quieres modificar.'); return; }
         const btn = document.getElementById('btn-ajustar');
         btn.disabled = true; btn.textContent = 'Aplicando…';
+        setMsg(true, 'Aplicando modificaciones… el contador muestra el tiempo estimado.');
+        const stopEta = startCountdown('modsEta', 25, 'Quedan');
+        const t0 = Date.now();
         try {
           const res = await fetch('/api/composer/ajustar', {
             method:'POST', headers:{'content-type':'application/json'},
@@ -1029,7 +1079,12 @@ export function paginaCrearHtml(): string {
             })
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'No se pudo aplicar el ajuste');
+          if (!res.ok) {
+            const extra = (data.errores && data.errores.length)
+              ? (' ' + data.errores.join(' · '))
+              : '';
+            throw new Error((data.error || 'No se pudo aplicar el ajuste') + extra);
+          }
           ultimoHtml = data.htmlContent;
           document.getElementById('htmlContent').value = data.htmlContent;
           document.getElementById('asunto').value = data.asunto || document.getElementById('asunto').value;
@@ -1037,9 +1092,15 @@ export function paginaCrearHtml(): string {
           preview.srcdoc = data.htmlContent;
           document.getElementById('btn-guardar').disabled = false;
           document.getElementById('btn-guardar').classList.add('pulse');
-          document.getElementById('modsMeta').textContent = 'Ajuste listo. Puedes pedir otro cambio o Guardar mail.';
+          const segs = Math.round((Date.now() - t0) / 1000);
+          stopEta('Listo en ' + fmtEta(segs));
+          document.getElementById('modsMeta').textContent =
+            'Ajuste listo en ' + segs + 's. Puedes pedir otro cambio o Guardar mail.';
           setMsg(true, 'Cambios aplicados: ' + (data.cambiosAplicados || mods));
-        } catch (err) { setMsg(false, err.message || String(err)); }
+        } catch (err) {
+          stopEta();
+          setMsg(false, err.message || String(err));
+        }
         finally { btn.disabled = false; btn.textContent = 'Aplicar modificaciones'; }
       };
 

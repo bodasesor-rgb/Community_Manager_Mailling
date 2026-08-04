@@ -1497,6 +1497,10 @@ const servidor = http.createServer((req, res) => {
 
       enviarJson(res, 404, { error: "ruta no encontrada" });
     } catch (error: unknown) {
+      if (error instanceof HtmlEmailInvalidoError) {
+        enviarError(res, error, "HTML inválido");
+        return;
+      }
       const mensaje =
         error instanceof Error ? error.message : "error desconocido";
       enviarJson(res, 500, { error: mensaje });
