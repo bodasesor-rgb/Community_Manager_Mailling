@@ -499,6 +499,13 @@ const servidor = http.createServer((req, res) => {
           baseUrl?: string;
           redes?: EnlaceSocial;
           notas?: string;
+          productos?: unknown[];
+          articulosBlog?: unknown[];
+          menus?: unknown[];
+          ciudades?: string[];
+          sitemapSyncEn?: string;
+          sitemapTotalUrls?: number;
+          inspeccionEn?: string;
         };
         const redesNorm = body.redes
           ? {
@@ -521,6 +528,23 @@ const servidor = http.createServer((req, res) => {
           ...(body.baseUrl !== undefined ? { baseUrl: body.baseUrl } : {}),
           ...(body.notas !== undefined ? { notas: body.notas } : {}),
           ...(redesNorm !== undefined ? { redes: redesNorm } : {}),
+          ...(Array.isArray(body.productos)
+            ? { productos: body.productos as never }
+            : {}),
+          ...(Array.isArray(body.articulosBlog)
+            ? { articulosBlog: body.articulosBlog as never }
+            : {}),
+          ...(Array.isArray(body.menus) ? { menus: body.menus as never } : {}),
+          ...(Array.isArray(body.ciudades) ? { ciudades: body.ciudades } : {}),
+          ...(body.sitemapSyncEn !== undefined
+            ? { sitemapSyncEn: body.sitemapSyncEn }
+            : {}),
+          ...(body.sitemapTotalUrls !== undefined
+            ? { sitemapTotalUrls: body.sitemapTotalUrls }
+            : {}),
+          ...(body.inspeccionEn !== undefined
+            ? { inspeccionEn: body.inspeccionEn }
+            : {}),
         });
         enviarJson(res, 200, actualizado);
         return;
