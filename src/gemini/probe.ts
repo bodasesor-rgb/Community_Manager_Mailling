@@ -1,6 +1,6 @@
 /**
  * Modelos Gemini permitidos: SOLO los configurados en env.
- * Sin cascadas de fallbacks que prueben media API y gasten cuota.
+ * Sin cascadas largas; remapea modelos retirados (p.ej. gemini-2.0-flash).
  */
 
 export interface ProbeModeloResultado {
@@ -10,9 +10,23 @@ export interface ProbeModeloResultado {
   detalle?: string;
 }
 
-/** Texto: únicamente GEMINI_MODEL (default gemini-2.0-flash). */
+/** Modelos de texto ya retirados por Google → reemplazo operativo. */
+const TEXTO_REEMPLAZO: Record<string, string> = {
+  "gemini-2.0-flash": "gemini-2.5-flash",
+  "gemini-2.0-flash-001": "gemini-2.5-flash",
+  "gemini-2.0-flash-lite": "gemini-2.5-flash-lite",
+  "gemini-2.0-flash-lite-001": "gemini-2.5-flash-lite",
+};
+
+/** Modelo de texto activo (respeta GEMINI_MODEL, corrige retirados). */
+export function modeloTextoActivo(): string {
+  const pedido = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+  return TEXTO_REEMPLAZO[pedido] ?? pedido;
+}
+
+/** Texto: únicamente el modelo activo. */
 export function candidatosTexto(): string[] {
-  return [process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash"];
+  return [modeloTextoActivo()];
 }
 
 /** Imagen predict: únicamente IMAGEN_MODEL (default imagen-3.0-generate-002). */

@@ -51,7 +51,7 @@ async function getModelo(
 
 /**
  * Verifica SOLO los agentes configurados en env:
- * - GEMINI_MODEL (default gemini-2.0-flash)
+ * - GEMINI_MODEL (default gemini-2.5-flash; 2.0-flash se remapea porque Google lo retiró)
  * - IMAGEN_MODEL (default imagen-3.0-generate-002)
  * Sin alternativas ni generación.
  */
@@ -62,7 +62,8 @@ export async function conectarAgentesSolicitados(): Promise<{
   listos: boolean;
   nota?: string;
 }> {
-  const modeloTexto = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+  const { modeloTextoActivo } = await import("./probe.js");
+  const modeloTexto = modeloTextoActivo();
   const modeloImagen =
     process.env.IMAGEN_MODEL?.trim() || "imagen-3.0-generate-002";
 

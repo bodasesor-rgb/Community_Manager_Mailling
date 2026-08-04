@@ -16,7 +16,7 @@ import {
   rutaMediaSegura,
 } from "./gemini/generar-imagen.js";
 import { conectarAgentesSolicitados } from "./gemini/conectar.js";
-import { probeModelosGemini } from "./gemini/probe.js";
+import { modeloTextoActivo, probeModelosGemini } from "./gemini/probe.js";
 import { KommoClient } from "./kommo/cliente.js";
 import { sincronizarContactoKommo } from "./kommo/sincronizar.js";
 import {
@@ -286,7 +286,7 @@ const servidor = http.createServer((req, res) => {
           ultimaActualizacion: BUILD_LABEL,
           ultimaActualizacionIso: BUILD_ISO,
           modelos: {
-            texto: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+            texto: modeloTextoActivo(),
             imagenPredict: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
             imagen:
               process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image",
@@ -729,7 +729,7 @@ const servidor = http.createServer((req, res) => {
         const nombres = modelos.map((m) => m.name);
         enviarJson(res, 200, {
           total: modelos.length,
-          textoPreferido: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+          textoPreferido: modeloTextoActivo(),
           imagenPreferida: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
           imagenLlmFallback:
             process.env.GEMINI_IMAGE_FALLBACK === "1"

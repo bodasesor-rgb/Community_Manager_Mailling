@@ -72,7 +72,7 @@ ${input.brief}
 ${contextoSitio}
 Devuelve SOLO un JSON válido (sin markdown) con esta forma exacta:
 {
-  "asunto": "asunto corto del email (máx 60 caracteres)",
+  "asunto": "asunto del email derivado del brief (máx 60 caracteres, atractivo, sin emojis)",
   "marca": "${marca}",
   "titular": "titular hero corto",
   "apoyo": "subtítulo hero corto",
@@ -93,6 +93,7 @@ Devuelve SOLO un JSON válido (sin markdown) con esta forma exacta:
 
 Reglas:
 - Interpreta el brief como pedidos en palabras normales (qué contar, a quién, qué ofrecer).
+- El campo "asunto" DEBE resumir las instrucciones del usuario (destino, oferta, descuento, temporada). No uses un asunto genérico.
 - Exactamente 3 productos; preferir nombres y URLs del conocimiento del sitio si existen.
 - Sin emojis. No inventes dominios raros: solo bodasesor.com o las URLs del conocimiento.
 - Mantén {{ contact.FIRSTNAME }} literal en el saludo.

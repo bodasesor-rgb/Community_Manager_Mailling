@@ -594,8 +594,12 @@ export function paginaCrearHtml(): string {
             <button type="button" class="sec" id="btn-guardar" disabled>Guardar borrador</button>
             <span id="metaImg" class="muted"></span>
           </div>
-          <label>Asunto<input id="asunto" readonly/></label>
-          <label>Nombre interno<input id="nombre"/></label>
+          <label>Asunto <span class="muted">(se genera solo con tus instrucciones)</span>
+            <input id="asunto" readonly placeholder="Se completa al generar el borrador"/>
+          </label>
+          <label>Nombre interno <span class="muted">(se genera solo con tus instrucciones)</span>
+            <input id="nombre" readonly placeholder="Se completa al generar el borrador"/>
+          </label>
           <h3 style="font-family:Fraunces,Georgia,serif">Biblioteca de imágenes</h3>
           <div id="gallery" class="gallery"></div>
         </div>
@@ -730,15 +734,18 @@ export function paginaCrearHtml(): string {
           if (!res.ok) throw new Error(data.error || 'No se pudo generar');
           ultimoHtml = data.htmlContent;
           document.getElementById('htmlContent').value = data.htmlContent;
-          document.getElementById('asunto').value = data.asunto || '';
-          document.getElementById('nombre').value = data.nombre || '';
+          const asunto = (data.asunto || '').trim();
+          const nombre = (data.nombre || (asunto ? ('Bodasesor · ' + asunto) : '')).trim();
+          document.getElementById('asunto').value = asunto;
+          document.getElementById('nombre').value = nombre;
+          if (!asunto) throw new Error('La IA no devolvió asunto; revisa el modelo Gemini.');
           preview.srcdoc = data.htmlContent;
           document.getElementById('metaImg').textContent =
             'Imágenes: ' + (data.imagenes?.reutilizadas||0) + ' reutilizadas, ' + (data.imagenes?.generadas||0) + ' nuevas';
           document.getElementById('btn-guardar').disabled = false;
           setMsg(true, data.advertencia
-            ? ('Borrador listo (con avisos): ' + data.advertencia)
-            : 'Borrador listo. Revisa la vista previa y guarda.');
+            ? ('Borrador listo. Asunto: «' + asunto + '». Avisos: ' + data.advertencia)
+            : ('Borrador listo. Asunto y nombre interno generados desde tus instrucciones.'));
           cargarGaleria();
         } catch (err) { setMsg(false, err.message || String(err)); }
         finally { btn.disabled = false; btn.textContent = 'Generar borrador'; }
@@ -746,10 +753,16 @@ export function paginaCrearHtml(): string {
 
       document.getElementById('btn-guardar').onclick = async () => {
         try {
+          const asunto = document.getElementById('asunto').value.trim();
+          const nombre = document.getElementById('nombre').value.trim();
+          if (!asunto || !nombre) {
+            setMsg(false, 'Primero genera el borrador para completar asunto y nombre interno.');
+            return;
+          }
           const remitente = { nombre: 'Bodasesor', email: 'hola@bodasesor.com' };
           const payload = {
-            nombre: document.getElementById('nombre').value || 'Newsletter',
-            asunto: document.getElementById('asunto').value,
+            nombre,
+            asunto,
             htmlContent: document.getElementById('htmlContent').value || ultimoHtml,
             remitente,
             instrucciones: document.getElementById('brief').value.trim(),

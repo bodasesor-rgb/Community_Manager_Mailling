@@ -252,9 +252,18 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
 
   if (generado.advertencia) advertencias.push(generado.advertencia);
 
+  const asunto = (generado.asunto || `Bodasesor · ${destino}`).trim();
+  // Nombre interno = etiqueta del proyecto a partir del mismo asunto/brief.
+  const nombre = (asunto.toLowerCase().startsWith("bodasesor")
+    ? asunto
+    : `Bodasesor · ${asunto}`)
+    .replace(/\s+/g, " ")
+    .slice(0, 80)
+    .trim();
+
   return {
-    asunto: generado.asunto,
-    nombre: `Newsletter ${destino}`,
+    asunto,
+    nombre,
     htmlContent,
     modeloTexto: generado.modeloTexto,
     destino,
