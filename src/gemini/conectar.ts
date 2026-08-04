@@ -1,6 +1,6 @@
 /**
  * Conexión ligera a los modelos solicitados (sin flujos de email).
- * Usa GET /models/{id} para validar acceso, sin generar copy ni imágenes.
+ * Usa GET /models/{id} para validar acceso — NO genera copy ni imágenes (no gasta cuota de generación).
  */
 
 export interface ConexionModelo {
@@ -50,67 +50,55 @@ async function getModelo(
 }
 
 /**
- * Verifica los agentes pedidos: Flash 2.0 (texto) e Imagen 3.
- * También reporta Imagen 4 si 3 ya no existe en la API.
- * No genera contenido.
+ * Verifica SOLO los agentes configurados en env:
+ * - GEMINI_MODEL (default gemini-2.0-flash)
+ * - IMAGEN_MODEL (default imagen-3.0-generate-002)
+ * Sin alternativas ni generación.
  */
 export async function conectarAgentesSolicitados(): Promise<{
   apiKeyPresente: boolean;
   texto: ConexionModelo;
   imagen: ConexionModelo;
-  imagenAlternativa: ConexionModelo | null;
   listos: boolean;
   nota?: string;
 }> {
+  const modeloTexto = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+  const modeloImagen =
+    process.env.IMAGEN_MODEL?.trim() || "imagen-3.0-generate-002";
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return {
       apiKeyPresente: false,
       texto: {
-        modelo: "gemini-2.0-flash",
+        modelo: modeloTexto,
         conectado: false,
         detalle: "GEMINI_API_KEY no configurada",
       },
       imagen: {
-        modelo: "imagen-3.0-generate-002",
+        modelo: modeloImagen,
         conectado: false,
         detalle: "GEMINI_API_KEY no configurada",
       },
-      imagenAlternativa: null,
       listos: false,
     };
   }
 
-  const texto = await getModelo(apiKey, "gemini-2.0-flash");
-  let imagen = await getModelo(apiKey, "imagen-3.0-generate-002");
-  if (!imagen.conectado) {
-    const alt3 = await getModelo(apiKey, "imagen-3.0-generate-001");
-    if (alt3.conectado) {
-      imagen = alt3;
-    }
-  }
-
-  let imagenAlternativa: ConexionModelo | null = null;
-  if (!imagen.conectado) {
-    imagenAlternativa = await getModelo(apiKey, "imagen-4.0-generate-001");
-  }
-
+  const texto = await getModelo(apiKey, modeloTexto);
+  const imagen = await getModelo(apiKey, modeloImagen);
   const listos = texto.conectado && imagen.conectado;
-  const listosConAlt =
-    texto.conectado && (imagen.conectado || Boolean(imagenAlternativa?.conectado));
 
   return {
     apiKeyPresente: true,
     texto,
     imagen,
-    imagenAlternativa,
     listos,
     ...(listos
-      ? {}
+      ? {
+          nota: "Metadata OK. No se generó contenido (sin gasto de generación).",
+        }
       : {
-          nota: listosConAlt
-            ? "Flash 2.0 OK. Imagen 3 no existe en esta API key; Imagen 4 sí está visible (sin generar aún)."
-            : "No se pudo conectar el par solicitado Flash 2.0 + Imagen 3.",
+          nota: `No se pudo conectar el par solicitado ${modeloTexto} + ${modeloImagen}.`,
         }),
   };
 }

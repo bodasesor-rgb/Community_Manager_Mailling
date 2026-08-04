@@ -1,6 +1,6 @@
 /**
  * Generación de imágenes para emails.
- * Intenta Imagen 3/4 (predict); si Google los bloquea, usa gemini-*-flash-image.
+ * Solo IMAGEN_MODEL (predict). Fallback LLM solo si GEMINI_IMAGE_FALLBACK=1.
  */
 
 import { promises as fs } from "node:fs";

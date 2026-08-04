@@ -443,17 +443,19 @@ const servidor = http.createServer((req, res) => {
         const nombres = modelos.map((m) => m.name);
         enviarJson(res, 200, {
           total: modelos.length,
-          textoPreferido: process.env.GEMINI_MODEL ?? "gemini-flash-latest",
-          imagenPreferida:
-            process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image",
-          imagenPredictPreferida:
-            process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
+          textoPreferido: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
+          imagenPreferida: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
+          imagenLlmFallback:
+            process.env.GEMINI_IMAGE_FALLBACK === "1"
+              ? process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image"
+              : null,
           flash20: modelos.filter((m) => m.name.includes("2.0-flash")),
           imagen: modelos.filter((m) => m.name.includes("imagen")),
           modelos: nombres,
           detalle: modelos.filter(
             (m) => m.name.includes("2.0-flash") || m.name.includes("imagen"),
           ),
+          nota: "Solo se usan GEMINI_MODEL e IMAGEN_MODEL en generación. Fallback LLM de imagen requiere GEMINI_IMAGE_FALLBACK=1.",
         });
         return;
       }
@@ -468,9 +470,15 @@ const servidor = http.createServer((req, res) => {
         return;
       }
 
-      /** Prueba real de qué modelos aceptan generate/predict con tu API key. */
+      /**
+       * Probe de generación (gasta cuota). Apagado por defecto.
+       * Solo con ?ejecutar=1 y únicamente GEMINI_MODEL / IMAGEN_MODEL.
+       * Preferir GET /gemini/conectar (metadata, sin gasto de generación).
+       */
       if (method === "GET" && path === "/gemini/probe") {
-        const probe = await probeModelosGemini();
+        const urlObj = new URL(req.url ?? "/", `http://${req.headers.host}`);
+        const ejecutar = urlObj.searchParams.get("ejecutar") === "1";
+        const probe = await probeModelosGemini({ ejecutar });
         enviarJson(res, 200, probe);
         return;
       }

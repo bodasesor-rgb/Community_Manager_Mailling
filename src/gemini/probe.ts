@@ -1,6 +1,6 @@
 /**
- * Descubre qué modelos de texto/imagen responden de verdad
- * con la GEMINI_API_KEY actual (ListModels a veces lista modelos ya bloqueados).
+ * Modelos Gemini permitidos: SOLO los configurados en env.
+ * Sin cascadas de fallbacks que prueben media API y gasten cuota.
  */
 
 export interface ProbeModeloResultado {
@@ -8,6 +8,100 @@ export interface ProbeModeloResultado {
   ok: boolean;
   status?: number;
   detalle?: string;
+}
+
+/** Texto: únicamente GEMINI_MODEL (default gemini-2.0-flash). */
+export function candidatosTexto(): string[] {
+  return [process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash"];
+}
+
+/** Imagen predict: únicamente IMAGEN_MODEL (default imagen-3.0-generate-002). */
+export function candidatosImagenPredict(): string[] {
+  return [process.env.IMAGEN_MODEL?.trim() || "imagen-3.0-generate-002"];
+}
+
+/**
+ * Imagen vía generateContent: solo si GEMINI_IMAGE_FALLBACK=1
+ * (apagado por defecto para no gastar en modelos extra).
+ */
+export function candidatosImagenLlm(): string[] {
+  if (process.env.GEMINI_IMAGE_FALLBACK?.trim() !== "1") {
+    return [];
+  }
+  return [
+    process.env.GEMINI_IMAGE_MODEL?.trim() || "gemini-2.5-flash-image",
+  ];
+}
+
+/** @deprecated usar candidatosImagenPredict */
+export function candidatosImagen(): string[] {
+  return candidatosImagenPredict();
+}
+
+/**
+ * Probe caro (generate/predict reales). Solo corre con `ejecutar: true`.
+ * Prueba ÚNICAMENTE los modelos configurados en env — nunca una lista larga.
+ */
+export async function probeModelosGemini(opciones?: {
+  ejecutar?: boolean;
+}): Promise<{
+  ejecutado: boolean;
+  texto: ProbeModeloResultado[];
+  imagenPredict: ProbeModeloResultado[];
+  imagenLlm: ProbeModeloResultado[];
+  imagen: ProbeModeloResultado[];
+  textoOk: string | null;
+  imagenOk: string | null;
+  nota: string;
+}> {
+  if (!opciones?.ejecutar) {
+    return {
+      ejecutado: false,
+      texto: [],
+      imagenPredict: [],
+      imagenLlm: [],
+      imagen: [],
+      textoOk: null,
+      imagenOk: null,
+      nota:
+        "Probe de generación desactivado (gasta cuota). Usa GET /gemini/conectar (metadata gratis) o /gemini/probe?ejecutar=1 solo si lo necesitas. Solo se probarían GEMINI_MODEL e IMAGEN_MODEL.",
+    };
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY no configurada");
+  }
+
+  const texto: ProbeModeloResultado[] = [];
+  for (const modelo of candidatosTexto()) {
+    texto.push(await probeGenerateContent(apiKey, modelo, false));
+  }
+
+  const imagenPredict: ProbeModeloResultado[] = [];
+  for (const modelo of candidatosImagenPredict()) {
+    imagenPredict.push(await probeImagenPredict(apiKey, modelo));
+  }
+
+  const imagenLlm: ProbeModeloResultado[] = [];
+  for (const modelo of candidatosImagenLlm()) {
+    imagenLlm.push(await probeGenerateContent(apiKey, modelo, true));
+  }
+
+  const imagen = [...imagenPredict, ...imagenLlm];
+  return {
+    ejecutado: true,
+    texto,
+    imagenPredict,
+    imagenLlm,
+    imagen,
+    textoOk: texto.find((t) => t.ok)?.modelo ?? null,
+    imagenOk:
+      imagenPredict.find((t) => t.ok)?.modelo ??
+      imagenLlm.find((t) => t.ok)?.modelo ??
+      null,
+    nota: "Probe limitado a modelos de env (GEMINI_MODEL / IMAGEN_MODEL [/ GEMINI_IMAGE_MODEL si GEMINI_IMAGE_FALLBACK=1]).",
+  };
 }
 
 async function probeGenerateContent(
@@ -101,109 +195,4 @@ async function probeImagenPredict(
       detalle: error instanceof Error ? error.message : "error de red",
     };
   }
-}
-
-/**
- * Texto: intenta Flash 2.0 si se pide, pero el default operativo
- * es gemini-flash-latest (2.0 ya no acepta generateContent en cuentas nuevas).
- */
-export function candidatosTexto(): string[] {
-  const preferido = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
-  return [
-    ...new Set([
-      preferido,
-      "gemini-2.0-flash",
-      "gemini-2.0-flash-001",
-      "gemini-flash-latest",
-      "gemini-3.6-flash",
-      "gemini-3.5-flash",
-      "gemini-3.1-flash-lite",
-      "gemini-2.5-flash",
-      "gemini-pro-latest",
-    ]),
-  ];
-}
-
-/** Familia Imagen (predict). En muchas keys nuevas ya viene bloqueada. */
-export function candidatosImagenPredict(): string[] {
-  const preferido = process.env.IMAGEN_MODEL?.trim() || "imagen-3.0-generate-002";
-  return [
-    ...new Set([
-      preferido,
-      "imagen-3.0-generate-002",
-      "imagen-3.0-generate-001",
-      "imagen-4.0-generate-001",
-      "imagen-4.0-fast-generate-001",
-      "imagen-4.0-ultra-generate-001",
-    ]),
-  ];
-}
-
-/** Reemplazo oficial de Imagen en Gemini API (generateContent + IMAGE). */
-export function candidatosImagenLlm(): string[] {
-  const preferido =
-    process.env.GEMINI_IMAGE_MODEL?.trim() || "gemini-2.5-flash-image";
-  return [
-    ...new Set([
-      preferido,
-      "gemini-2.5-flash-image",
-      "gemini-3.1-flash-image",
-      "gemini-3.1-flash-lite-image",
-      "gemini-3.1-flash-image-preview",
-      "gemini-3-pro-image-preview",
-    ]),
-  ];
-}
-
-/** @deprecated usar candidatosImagenPredict */
-export function candidatosImagen(): string[] {
-  return candidatosImagenPredict();
-}
-
-export async function probeModelosGemini(): Promise<{
-  texto: ProbeModeloResultado[];
-  imagenPredict: ProbeModeloResultado[];
-  imagenLlm: ProbeModeloResultado[];
-  /** Predict + LLM juntos (compat). */
-  imagen: ProbeModeloResultado[];
-  textoOk: string | null;
-  imagenOk: string | null;
-  nota: string;
-}> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY no configurada");
-  }
-
-  const texto: ProbeModeloResultado[] = [];
-  for (const modelo of candidatosTexto()) {
-    texto.push(await probeGenerateContent(apiKey, modelo, false));
-  }
-
-  const imagenPredict: ProbeModeloResultado[] = [];
-  for (const modelo of candidatosImagenPredict()) {
-    imagenPredict.push(await probeImagenPredict(apiKey, modelo));
-  }
-
-  const imagenLlm: ProbeModeloResultado[] = [];
-  for (const modelo of candidatosImagenLlm()) {
-    imagenLlm.push(await probeGenerateContent(apiKey, modelo, true));
-  }
-
-  const imagen = [...imagenPredict, ...imagenLlm];
-  const imagenOk =
-    imagenPredict.find((t) => t.ok)?.modelo ??
-    imagenLlm.find((t) => t.ok)?.modelo ??
-    null;
-
-  return {
-    texto,
-    imagenPredict,
-    imagenLlm,
-    imagen,
-    textoOk: texto.find((t) => t.ok)?.modelo ?? null,
-    imagenOk,
-    nota:
-      "Flash 2.0 e Imagen 3/4 suelen estar retirados para cuentas nuevas aunque haya saldo. El reemplazo operativo es gemini-flash-latest + gemini-*-flash-image.",
-  };
 }

@@ -12,7 +12,7 @@ export interface GenerarContenidoInput {
   marca?: string;
   tono?: string;
   idioma?: string;
-  /** Default true: genera hero con Imagen. */
+  /** Default false: no gasta Imagen salvo que lo pidas explícito. */
   generarImagen?: boolean;
   baseUrl?: string;
 }
@@ -53,7 +53,7 @@ export async function generarContenidoEmail(
   const marca = input.marca ?? "Bodasesor";
   const tono = input.tono ?? "cercano y profesional";
   const idioma = input.idioma ?? "es";
-  const quiereImagen = input.generarImagen !== false;
+  const quiereImagen = input.generarImagen === true;
 
   const prompt = `Eres copywriter y diseñador de emails promocionales para "${marca}" (bodas y eventos en México/Latam).
 Idioma: ${idioma}. Tono: ${tono}, cálido y elegante (sin emojis).
@@ -99,160 +99,133 @@ Reglas:
     },
   };
 
-  let ultimoError = "Gemini no respondió";
-  for (const modelo of candidatosTexto()) {
-    // Probar v1beta y v1: algunas cuentas aún sirven 2.0 solo en una versión.
-    for (const apiVersion of ["v1beta", "v1"] as const) {
-      const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = (await response.json()) as GeminiResponse;
+  // Solo el modelo configurado (GEMINI_MODEL) — sin cascada que gaste cuota.
+  const modelo = candidatosTexto()[0]!;
+  const apiVersion = "v1beta";
+  const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = (await response.json()) as GeminiResponse;
 
-      if (!response.ok) {
-        ultimoError = `Gemini ${modelo} [${apiVersion}] (${response.status}): ${data.error?.message ?? JSON.stringify(data)}`;
-        if (response.status === 404) {
-          continue;
-        }
-        // Otros errores (quota, safety): no tiene sentido seguir con el mismo modelo.
-        if (response.status === 429 || response.status >= 500) {
-          continue;
-        }
-        break;
-      }
+  if (!response.ok) {
+    throw new Error(
+      `Gemini ${modelo} [${apiVersion}] (${response.status}): ${data.error?.message ?? JSON.stringify(data)}`,
+    );
+  }
 
-      const texto = data.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text ?? "")
-        .join("")
-        .trim();
+  const texto = data.candidates?.[0]?.content?.parts
+    ?.map((p) => p.text ?? "")
+    .join("")
+    .trim();
 
-      if (!texto) {
-        ultimoError = `Gemini ${modelo} no devolvió contenido`;
-        continue;
-      }
+  if (!texto) {
+    throw new Error(`Gemini ${modelo} no devolvió contenido`);
+  }
 
-      const parsed = JSON.parse(limpiarJson(texto)) as {
-        asunto?: string;
-        marca?: string;
-        titular?: string;
-        apoyo?: string;
-        destino?: string;
-        saludo?: string;
-        ctaTexto?: string;
-        productos?: Array<{ titulo?: string; descripcion?: string }>;
-        testimonial?: { cita?: string; autor?: string };
-        blog?: { titulo?: string; extracto?: string };
-        urgencia?: string;
-        bloques?: GenerarPlantillaHtmlInput["bloques"];
-        pie?: string;
-        imagePrompt?: string;
-      };
+  const parsed = JSON.parse(limpiarJson(texto)) as {
+    asunto?: string;
+    marca?: string;
+    titular?: string;
+    apoyo?: string;
+    destino?: string;
+    saludo?: string;
+    ctaTexto?: string;
+    productos?: Array<{ titulo?: string; descripcion?: string }>;
+    testimonial?: { cita?: string; autor?: string };
+    blog?: { titulo?: string; extracto?: string };
+    urgencia?: string;
+    bloques?: GenerarPlantillaHtmlInput["bloques"];
+    pie?: string;
+    imagePrompt?: string;
+  };
 
-      if (!parsed.asunto || !parsed.titular) {
-        throw new Error("Gemini devolvió JSON incompleto (faltan asunto/titular)");
-      }
+  if (!parsed.asunto || !parsed.titular) {
+    throw new Error("Gemini devolvió JSON incompleto (faltan asunto/titular)");
+  }
 
-      let imagen: ImagenGenerada | undefined;
-      const imagePrompt = parsed.imagePrompt?.trim();
-      const advertencias: string[] = [];
+  let imagen: ImagenGenerada | undefined;
+  const imagePrompt = parsed.imagePrompt?.trim();
+  const advertencias: string[] = [];
 
-      const pedidoTexto = process.env.GEMINI_MODEL?.trim();
-      if (
-        pedidoTexto &&
-        pedidoTexto !== modelo &&
-        (pedidoTexto.startsWith("gemini-2.0") ||
-          pedidoTexto === "gemini-2.0-flash")
-      ) {
-        advertencias.push(
-          `GEMINI_MODEL=${pedidoTexto} no acepta generateContent; se usó ${modelo}.`,
-        );
-      }
-
-      if (quiereImagen && imagePrompt) {
-        imagen = await generarImagenEmail({
-          prompt: imagePrompt,
-          aspectRatio: "16:9",
-          ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
-        });
-        const pedidoImagen = process.env.IMAGEN_MODEL?.trim();
-        if (
-          pedidoImagen &&
-          pedidoImagen.startsWith("imagen-") &&
-          !imagen.modelo.startsWith("imagen-")
-        ) {
-          advertencias.push(
-            `IMAGEN_MODEL=${pedidoImagen} no disponible; se usó ${imagen.modelo}.`,
-          );
-        }
-      }
-
-      const destino =
-        parsed.destino?.trim() ||
-        extraerDestinoDelBrief(input.brief) ||
-        "tu destino";
-
-      const productos = (parsed.productos ?? [])
-        .filter((p) => p.titulo && p.descripcion)
-        .slice(0, 3)
-        .map((p, i) => ({
-          titulo: p.titulo as string,
-          descripcion: p.descripcion as string,
-          foto: `[[FOTO_PRODUCTO_${i + 1}]]`,
-        }));
-
-      const promocional = {
-        destino,
-        heroTitulo: parsed.titular,
-        ...(parsed.apoyo !== undefined ? { heroSubtitulo: parsed.apoyo } : {}),
-        ...(parsed.saludo !== undefined ? { saludo: parsed.saludo } : {}),
-        ...(parsed.ctaTexto !== undefined ? { ctaTexto: parsed.ctaTexto } : {}),
-        ...(productos.length > 0 ? { productos } : {}),
-        ...(parsed.testimonial?.cita && parsed.testimonial.autor
-          ? {
-              testimonial: {
-                cita: parsed.testimonial.cita,
-                autor: parsed.testimonial.autor,
-              },
-            }
-          : {}),
-        ...(parsed.blog?.titulo && parsed.blog.extracto
-          ? {
-              blog: {
-                titulo: parsed.blog.titulo,
-                extracto: parsed.blog.extracto,
-                url: "[[ENLACE_BLOG]]",
-              },
-            }
-          : {}),
-        ...(parsed.urgencia !== undefined ? { urgencia: parsed.urgencia } : {}),
-        ...(parsed.pie !== undefined ? { pieLegal: parsed.pie } : {}),
-        ...(imagen
-          ? { heroFoto: imagen.urlPublica }
-          : { heroFoto: "[[FOTO_HERO]]" }),
-      };
-
-      return {
-        asunto: parsed.asunto,
-        modeloTexto: modelo,
-        ...(imagePrompt ? { imagePrompt } : {}),
-        ...(imagen ? { imagen } : {}),
-        ...(advertencias.length > 0
-          ? { advertencia: advertencias.join(" ") }
-          : {}),
-        contenido: {
-          marca: parsed.marca ?? marca,
-          titular: parsed.titular,
-          ...(parsed.apoyo !== undefined ? { apoyo: parsed.apoyo } : {}),
-          ...(parsed.pie !== undefined ? { pie: parsed.pie } : {}),
-          promocional,
-        },
-      };
+  if (quiereImagen && imagePrompt) {
+    imagen = await generarImagenEmail({
+      prompt: imagePrompt,
+      aspectRatio: "16:9",
+      ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
+    });
+    const pedidoImagen =
+      process.env.IMAGEN_MODEL?.trim() || "imagen-3.0-generate-002";
+    if (imagen.modelo !== pedidoImagen) {
+      advertencias.push(
+        `Se usó modelo de imagen ${imagen.modelo} (configurado: ${pedidoImagen}).`,
+      );
     }
   }
 
-  throw new Error(ultimoError);
+  const destino =
+    parsed.destino?.trim() ||
+    extraerDestinoDelBrief(input.brief) ||
+    "tu destino";
+
+  const productos = (parsed.productos ?? [])
+    .filter((p) => p.titulo && p.descripcion)
+    .slice(0, 3)
+    .map((p, i) => ({
+      titulo: p.titulo as string,
+      descripcion: p.descripcion as string,
+      foto: `[[FOTO_PRODUCTO_${i + 1}]]`,
+    }));
+
+  const promocional = {
+    destino,
+    heroTitulo: parsed.titular,
+    ...(parsed.apoyo !== undefined ? { heroSubtitulo: parsed.apoyo } : {}),
+    ...(parsed.saludo !== undefined ? { saludo: parsed.saludo } : {}),
+    ...(parsed.ctaTexto !== undefined ? { ctaTexto: parsed.ctaTexto } : {}),
+    ...(productos.length > 0 ? { productos } : {}),
+    ...(parsed.testimonial?.cita && parsed.testimonial.autor
+      ? {
+          testimonial: {
+            cita: parsed.testimonial.cita,
+            autor: parsed.testimonial.autor,
+          },
+        }
+      : {}),
+    ...(parsed.blog?.titulo && parsed.blog.extracto
+      ? {
+          blog: {
+            titulo: parsed.blog.titulo,
+            extracto: parsed.blog.extracto,
+            url: "[[ENLACE_BLOG]]",
+          },
+        }
+      : {}),
+    ...(parsed.urgencia !== undefined ? { urgencia: parsed.urgencia } : {}),
+    ...(parsed.pie !== undefined ? { pieLegal: parsed.pie } : {}),
+    ...(imagen
+      ? { heroFoto: imagen.urlPublica }
+      : { heroFoto: "[[FOTO_HERO]]" }),
+  };
+
+  return {
+    asunto: parsed.asunto,
+    modeloTexto: modelo,
+    ...(imagePrompt ? { imagePrompt } : {}),
+    ...(imagen ? { imagen } : {}),
+    ...(advertencias.length > 0
+      ? { advertencia: advertencias.join(" ") }
+      : {}),
+    contenido: {
+      marca: parsed.marca ?? marca,
+      titular: parsed.titular,
+      ...(parsed.apoyo !== undefined ? { apoyo: parsed.apoyo } : {}),
+      ...(parsed.pie !== undefined ? { pie: parsed.pie } : {}),
+      promocional,
+    },
+  };
 }
 
 export async function listarModelosGemini(): Promise<
