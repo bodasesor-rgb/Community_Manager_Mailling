@@ -1,0 +1,4 @@
+# Borradores locales del panel (no commitear datos reales)
+data/
+.next/
+tsconfig.tsbuildinfo

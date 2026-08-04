@@ -1,47 +1,37 @@
 # Community Manager Mailling
 
-Microservicio Node.js + TypeScript en Hostinger.
-Integra **Brevo** (envío), **Gemini** (copy) y **Kommo** (contactos).
+Microservicio + panel de email marketing (Brevo, Kommo, Gemini).
 
-## Variables de entorno
-
-| Clave | Uso |
-|---|---|
-| `BREVO_API_KEY` | API Brevo |
-| `GEMINI_API_KEY` | Generación de copy (Flash 2.0) + Imagen 3 |
-| `GEMINI_MODEL` | Default `gemini-2.0-flash` |
-| `IMAGEN_MODEL` | Default `imagen-3.0-generate-002` |
-| `PUBLIC_BASE_URL` | URL pública Hostinger para `/media` |
-| `KOMMO_BASE_URL` | Ej. `https://tu-cuenta.kommo.com` |
-| `KOMMO_CLAVE_SECRETA` | Token Bearer de Kommo |
-| `REMITENTE_EMAIL` | Opcional (si no, usa sender activo de Brevo) |
-| `BREVO_DEFAULT_LIST_IDS` | Listas default para webhook Kommo (ej. `21`) |
-
-## Endpoints útiles
+## Panel (Next.js)
 
 ```bash
-GET  /health
-GET  /conexion
-GET  /remitentes
-GET  /gemini/modelos
-POST /contenido/generar          # Flash 2.0 + Imagen 3 → HTML
-POST /imagenes/generar           # Solo Imagen 3
-GET  /media/:archivo             # Sirve imágenes del email
-POST /envios                     # brief → plantilla Brevo (con imagen)
-GET  /kommo/contactos
-POST /kommo/sincronizar          # { kommoId, listIds? }
-POST /webhooks/kommo             # sync desde Kommo
+# desde la raíz del repo
+cp .env.example panel/.env.local   # o exporta las vars en el entorno
+# edita panel/.env.local con BREVO_*, KOMMO_SUBDOMAIN, KOMMO_TOKEN
+
+npm --prefix panel install
+npm run panel:dev
+# → http://localhost:3000/contactos
+# → http://localhost:3000/plantillas
 ```
 
-## Creación rápida (Hostinger)
+Las API keys viven solo en el servidor (API routes). El cliente solo llama a `/api/*`.
+
+## Sync Kommo → Brevo (dryRun)
 
 ```bash
-curl -X POST https://TU-DOMINIO/envios \
-  -H 'content-type: application/json' \
-  -d '{
-    "brief": "Tips de content para wedding planners esta semana",
-    "modo": "plantilla"
-  }'
+# No escribe en Brevo
+npm run sync-contactos
+
+# Escritura real
+DRY_RUN=false npm run sync-contactos
 ```
 
-`modo: "plantilla"` no crea campaña. `modo: "borrador"` + `listIds` crea borrador sin enviar.
+También: `GET/POST /api/sync-contactos?dryRun=true` desde el panel.
+
+## Adaptadores
+
+- `src/email-provider.ts` — Brevo (`EmailProvider`)
+- `src/kommo-provider.ts` — Kommo (`KommoCrmProvider`)
+- `src/validar-email.ts` — validación determinista
+- `src/servicios/sync-kommo-brevo.ts` — sync con reporte

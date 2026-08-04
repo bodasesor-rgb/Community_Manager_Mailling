@@ -41,6 +41,20 @@ export {
 } from "./kommo/sincronizar.js";
 
 export {
+  KommoCrmProvider,
+  type KommoProvider,
+  type KommoContactoEmail,
+} from "./kommo-provider.js";
+
+export { esEmailValido, normalizarEmail } from "./validar-email.js";
+
+export {
+  syncContactosKommoBrevo,
+  type SyncContactosReporte,
+  type SyncContactosOpciones,
+} from "./servicios/sync-kommo-brevo.js";
+
+export {
   generarContenidoEmail,
   listarModelosGemini,
   type GenerarContenidoInput,

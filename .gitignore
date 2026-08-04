@@ -6,3 +6,6 @@ media/
 *.log
 suprimidos.json
 .DS_Store
+panel/data/
+panel/.next/
+panel/node_modules/
