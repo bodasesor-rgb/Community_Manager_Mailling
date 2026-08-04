@@ -6,6 +6,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import {
+  asegurarPersistencia,
+  rutasPersistencia,
+} from "../persistencia/rutas.js";
 
 export type EstadoBorrador = "borrador" | "aprobado";
 
@@ -22,15 +26,13 @@ export interface BorradorPlantilla {
   brevoCampanaId?: number;
 }
 
-function archivoBorradores(): string {
-  return (
-    process.env.BORRADORES_PATH ??
-    path.resolve(process.cwd(), "data", "borradores.json")
-  );
+async function archivoBorradores(): Promise<string> {
+  await asegurarPersistencia();
+  return rutasPersistencia().borradores;
 }
 
 async function leerTodos(): Promise<BorradorPlantilla[]> {
-  const archivo = archivoBorradores();
+  const archivo = await archivoBorradores();
   try {
     const raw = await fs.readFile(archivo, "utf8");
     const parsed: unknown = JSON.parse(raw);
@@ -49,7 +51,7 @@ async function leerTodos(): Promise<BorradorPlantilla[]> {
 }
 
 async function escribirTodos(items: BorradorPlantilla[]): Promise<void> {
-  const archivo = archivoBorradores();
+  const archivo = await archivoBorradores();
   await fs.mkdir(path.dirname(archivo), { recursive: true });
   await fs.writeFile(archivo, JSON.stringify(items, null, 2), "utf8");
 }

@@ -69,6 +69,15 @@ import {
   listarPlantillasBiblioteca,
   obtenerPlantillaBiblioteca,
 } from "./panel/plantillas-biblioteca.js";
+import {
+  guardarReglasComposer,
+  leerReglasComposer,
+  REGLAS_DEFAULT,
+} from "./panel/reglas-composer.js";
+import {
+  asegurarPersistencia,
+  rutasPersistencia,
+} from "./persistencia/rutas.js";
 
 const puerto = Number(process.env.PORT ?? 3000);
 const provider: EmailProvider = new BrevoProvider();
@@ -278,6 +287,7 @@ const servidor = http.createServer((req, res) => {
       }
 
       if (method === "GET" && path === "/health") {
+        await asegurarPersistencia();
         enviarJson(res, 200, {
           ok: true,
           servicio: "Community Manager Mailling",
@@ -291,6 +301,7 @@ const servidor = http.createServer((req, res) => {
             imagen:
               process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image",
           },
+          persistencia: rutasPersistencia(),
           integraciones: {
             brevo: Boolean(process.env.BREVO_API_KEY),
             gemini: Boolean(process.env.GEMINI_API_KEY),
@@ -407,6 +418,32 @@ const servidor = http.createServer((req, res) => {
         }
         const resultado = await generarIdeasTemas(body.brief);
         enviarJson(res, 200, resultado);
+        return;
+      }
+
+      if (method === "GET" && path === "/api/composer/reglas") {
+        const reglas = await leerReglasComposer();
+        enviarJson(res, 200, { ...reglas, default: REGLAS_DEFAULT });
+        return;
+      }
+
+      if (method === "POST" && path === "/api/composer/reglas") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          texto?: string;
+          restaurarDefault?: boolean;
+        };
+        if (body.restaurarDefault) {
+          const reglas = await guardarReglasComposer(REGLAS_DEFAULT);
+          enviarJson(res, 200, reglas);
+          return;
+        }
+        if (typeof body.texto !== "string") {
+          enviarJson(res, 400, { error: "texto es requerido" });
+          return;
+        }
+        const reglas = await guardarReglasComposer(body.texto);
+        enviarJson(res, 200, reglas);
         return;
       }
 
@@ -1294,6 +1331,13 @@ const servidor = http.createServer((req, res) => {
   })();
 });
 
-servidor.listen(puerto, () => {
-  console.log(`Servidor escuchando en puerto ${puerto}`);
-});
+asegurarPersistencia()
+  .catch((err) => {
+    console.error("No se pudo preparar persistencia:", err);
+  })
+  .finally(() => {
+    servidor.listen(puerto, () => {
+      console.log(`Servidor escuchando en puerto ${puerto}`);
+      console.log(`Persistencia: ${rutasPersistencia().dataDir}`);
+    });
+  });

@@ -17,6 +17,8 @@ export interface GenerarContenidoInput {
   baseUrl?: string;
   /** Contexto del sitio (productos, blog, redes) inyectado al prompt. */
   contextoSitio?: string;
+  /** Reglas permanentes de estructura del correo (panel Crear). */
+  reglas?: string;
 }
 
 export interface ContenidoGenerado {
@@ -44,6 +46,9 @@ export async function generarContenidoEmail(
   const contextoSitio = input.contextoSitio?.trim()
     ? `\nConocimiento del sitio web (usa URLs reales cuando menciones productos, blog o redes):\n"""\n${input.contextoSitio.trim().slice(0, 6000)}\n"""\n`
     : "";
+  const reglasFijas = input.reglas?.trim()
+    ? `\nREGLAS PERMANENTES DE ESTRUCTURA (obligatorias):\n"""\n${input.reglas.trim().slice(0, 4000)}\n"""\n`
+    : "";
 
   const prompt = `Eres copywriter de emails promocionales para "${marca}" (bodas y eventos en México).
 Idioma: ${idioma}. Tono: ${tono}, cálido y elegante (sin emojis).
@@ -53,7 +58,7 @@ Instrucciones del usuario:
 """
 ${input.brief}
 """
-${contextoSitio}
+${reglasFijas}${contextoSitio}
 Devuelve SOLO un JSON válido (sin markdown) con esta forma exacta:
 {
   "asunto": "asunto del email derivado del brief (máx 60 caracteres, atractivo, sin emojis)",
@@ -64,23 +69,28 @@ Devuelve SOLO un JSON válido (sin markdown) con esta forma exacta:
   "saludo": "2-3 frases. Debe incluir exactamente {{ contact.FIRSTNAME }} al inicio",
   "ctaTexto": "texto del botón (ej. Cotizar mi evento)",
   "productos": [
-    { "titulo": "servicio/producto 1", "descripcion": "1-2 frases", "url": "https://bodasesor.com/..." },
-    { "titulo": "servicio/producto 2", "descripcion": "1-2 frases", "url": "https://bodasesor.com/..." },
-    { "titulo": "servicio/producto 3", "descripcion": "1-2 frases", "url": "https://bodasesor.com/..." }
+    { "titulo": "servicio 1", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
+    { "titulo": "servicio 2", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
+    { "titulo": "servicio 3", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
+    { "titulo": "servicio 4", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
+    { "titulo": "servicio 5", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
+    { "titulo": "servicio 6", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
+    { "titulo": "servicio 7", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
+    { "titulo": "servicio 8", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." }
   ],
-  "testimonial": { "cita": "frase de cliente", "autor": "Nombre y Nombre" },
-  "blog": { "titulo": "título de artículo", "extracto": "1-2 frases", "url": "https://bodasesor.com/blog/..." },
-  "urgencia": "frase corta de escasez / reserva",
+  "urgencia": "frase corta que mencione el código MAILING10 (10% descuento)",
   "pie": "texto legal corto de comunidad",
   "imagePrompt": "English visual prompt for a tasteful wedding/event hero photo, no text in the image"
 }
 
 Reglas:
 - Interpreta el brief como pedidos en palabras normales (qué contar, a quién, qué ofrecer).
-- El campo "asunto" DEBE resumir las instrucciones del usuario (destino, oferta, descuento, temporada). No uses un asunto genérico.
-- Exactamente 3 productos; preferir nombres y URLs del conocimiento del sitio si existen.
+- Respeta las REGLAS PERMANENTES DE ESTRUCTURA si vienen.
+- El campo "asunto" DEBE resumir las instrucciones del usuario (destino, oferta, descuento). No uses un asunto genérico.
+- Exactamente 8 productos variados; preferir nombres y URLs reales del conocimiento del sitio.
 - Sin emojis. No inventes dominios raros: solo bodasesor.com o las URLs del conocimiento.
 - Mantén {{ contact.FIRSTNAME }} literal en el saludo.
+- Menciona el descuento mailing 10% (código MAILING10) en urgencia o saludo.
 - imagePrompt en inglés, fotográfico.`;
 
   const { modelo, texto } = await generarTextoGemini({
@@ -136,7 +146,7 @@ Reglas:
 
   const productos = (parsed.productos ?? [])
     .filter((p) => p.titulo && p.descripcion)
-    .slice(0, 3)
+    .slice(0, 8)
     .map((p, i) => ({
       titulo: p.titulo as string,
       descripcion: p.descripcion as string,
@@ -151,14 +161,6 @@ Reglas:
     ...(parsed.saludo !== undefined ? { saludo: parsed.saludo } : {}),
     ...(parsed.ctaTexto !== undefined ? { ctaTexto: parsed.ctaTexto } : {}),
     ...(productos.length > 0 ? { productos } : {}),
-    ...(parsed.testimonial?.cita && parsed.testimonial.autor
-      ? {
-          testimonial: {
-            cita: parsed.testimonial.cita,
-            autor: parsed.testimonial.autor,
-          },
-        }
-      : {}),
     ...(parsed.blog?.titulo && parsed.blog.extracto
       ? {
           blog: {

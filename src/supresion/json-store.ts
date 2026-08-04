@@ -11,8 +11,17 @@ export class JsonSupresionStore implements SupresionStore {
   private readonly archivo: string;
 
   constructor(archivo?: string) {
-    this.archivo =
-      archivo ?? path.resolve(process.cwd(), "suprimidos.json");
+    // Lazy: si no hay path, se resuelve en runtime vía DATA_DIR durable.
+    this.archivo = archivo ?? "";
+  }
+
+  private async rutaArchivo(): Promise<string> {
+    if (this.archivo) return this.archivo;
+    const { asegurarPersistencia, rutasPersistencia } = await import(
+      "../persistencia/rutas.js"
+    );
+    await asegurarPersistencia();
+    return rutasPersistencia().suprimidos;
   }
 
   async estaSuprimido(email: string): Promise<boolean> {
@@ -50,8 +59,9 @@ export class JsonSupresionStore implements SupresionStore {
   }
 
   private async leer(): Promise<ContactoSuprimido[]> {
+    const archivo = await this.rutaArchivo();
     try {
-      const raw = await fs.readFile(this.archivo, "utf8");
+      const raw = await fs.readFile(archivo, "utf8");
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) {
         return [];
@@ -72,10 +82,11 @@ export class JsonSupresionStore implements SupresionStore {
   }
 
   private async escribir(registros: ContactoSuprimido[]): Promise<void> {
-    const dir = path.dirname(this.archivo);
+    const archivo = await this.rutaArchivo();
+    const dir = path.dirname(archivo);
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(
-      this.archivo,
+      archivo,
       JSON.stringify(registros, null, 2),
       "utf8",
     );

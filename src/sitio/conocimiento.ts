@@ -6,6 +6,10 @@
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import {
+  asegurarPersistencia,
+  rutasPersistencia,
+} from "../persistencia/rutas.js";
 
 /** Mensaje prellenado del botón WhatsApp en los correos. */
 export const WHATSAPP_MENSAJE_CORREO =
@@ -115,11 +119,9 @@ const PRODUCTOS_SEMILLA: Array<{ slug: string; nombre: string; categoria: string
   { slug: "espacios-eventos", nombre: "Espacios para eventos", categoria: "venues" },
 ];
 
-function archivoConocimiento(): string {
-  return (
-    process.env.SITIO_CONOCIMIENTO_PATH ??
-    path.resolve(process.cwd(), "data", "sitio-conocimiento.json")
-  );
+async function archivoConocimiento(): Promise<string> {
+  await asegurarPersistencia();
+  return rutasPersistencia().sitio;
 }
 
 function seed(): SitioConocimiento {
@@ -162,7 +164,7 @@ function seed(): SitioConocimiento {
 
 export async function leerConocimiento(): Promise<SitioConocimiento> {
   try {
-    const raw = await fs.readFile(archivoConocimiento(), "utf8");
+    const raw = await fs.readFile(await archivoConocimiento(), "utf8");
     const parsed = JSON.parse(raw) as SitioConocimiento;
     return { ...seed(), ...parsed, redes: { ...seed().redes, ...parsed.redes } };
   } catch (error: unknown) {
@@ -183,7 +185,7 @@ export async function leerConocimiento(): Promise<SitioConocimiento> {
 export async function guardarConocimiento(
   data: SitioConocimiento,
 ): Promise<SitioConocimiento> {
-  const archivo = archivoConocimiento();
+  const archivo = await archivoConocimiento();
   await fs.mkdir(path.dirname(archivo), { recursive: true });
   const next: SitioConocimiento = {
     ...data,
@@ -460,11 +462,57 @@ Artículos de blog (muestra; hay ${c.articulosBlog.length} en total):
 ${blog || "(inspecciona el sitio)"}`;
 }
 
-/** Elige hasta 3 productos relevantes al brief. */
+/** Enlaces de la navbar principal (sin submenús). */
+export interface NavItem {
+  nombre: string;
+  url: string;
+}
+
+/** Navbar principal de bodasesor.com (solo ítems raíz, linkeados). */
+export function navPrincipalSitio(c: SitioConocimiento): NavItem[] {
+  const base = (c.baseUrl || "https://bodasesor.com").replace(/\/+$/, "");
+  const cotizar = enlaceWhatsAppCotizar(c.redes.whatsapp || c.cotizarUrl);
+  return [
+    { nombre: "Inicio", url: `${base}/` },
+    { nombre: "Bodas", url: `${base}/bodas` },
+    { nombre: "XV años", url: `${base}/xv-anos` },
+    { nombre: "Corporativos", url: `${base}/eventos-corporativos` },
+    { nombre: "Servicios", url: `${base}/banquetes-catering` },
+    { nombre: "Blog", url: c.blogUrl || `${base}/blog` },
+    { nombre: "Galería", url: `${base}/galeria` },
+    { nombre: "Cotizar", url: cotizar },
+  ];
+}
+
+/** Artículo de blog al azar. */
+export function articuloBlogAleatorio(
+  c: SitioConocimiento,
+): ArticuloBlog | null {
+  if (c.articulosBlog.length === 0) return null;
+  const i = Math.floor(Math.random() * c.articulosBlog.length);
+  return c.articulosBlog[i] ?? null;
+}
+
+/** Convierte extracto corto en ~3 párrafos teaser + texto para «Ver más». */
+export function tresParrafosBlog(a: ArticuloBlog): string {
+  const e = (a.extracto || "").trim();
+  const oraciones = e.split(/(?<=[.!?…])\s+/).filter(Boolean);
+  if (oraciones.length >= 3) {
+    return oraciones.slice(0, 3).join("\n\n");
+  }
+  return [
+    e ||
+      `En el blog de Bodasesor compartimos ideas sobre «${a.titulo}».`,
+    "Este artículo reúne detalles prácticos para que tu celebración se sienta cuidada desde la planeación hasta el último brindis.",
+    "Entra a la nota completa para ver ejemplos, tips y recomendaciones del equipo Bodasesor.",
+  ].join("\n\n");
+}
+
+/** Elige hasta N productos relevantes al brief (por defecto 8). */
 export function sugerirProductosParaBrief(
   c: SitioConocimiento,
   brief: string,
-  limite = 3,
+  limite = 8,
 ): ProductoSitio[] {
   const t = brief.toLowerCase();
   const scored = c.productos.map((p) => {

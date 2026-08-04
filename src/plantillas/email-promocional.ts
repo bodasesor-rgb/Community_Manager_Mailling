@@ -44,6 +44,20 @@ export interface BlogPromocional {
   url?: string;
 }
 
+export interface NavItemPromocional {
+  nombre: string;
+  url: string;
+}
+
+export interface DescuentoPromocional {
+  /** Porcentaje, p.ej. 10. */
+  porcentaje: number;
+  /** Código visible, p.ej. MAILING10. */
+  codigo: string;
+  /** Texto de apoyo opcional. */
+  texto?: string;
+}
+
 export interface EmailPromocionalInput {
   /** Destino o tema de la semana (p.ej. "Posadas"). */
   destino: string;
@@ -60,7 +74,7 @@ export interface EmailPromocionalInput {
   ctaTexto?: string;
   /** URL o [[ENLACE_COTIZAR]]. */
   ctaUrl?: string;
-  /** Hasta 3 productos / experiencias. */
+  /** Productos / experiencias (ideal: 8). */
   productos?: ProductoPromocional[];
   testimonial?: TestimonialPromocional;
   blog?: BlogPromocional;
@@ -75,6 +89,12 @@ export interface EmailPromocionalInput {
   whatsappUrl?: string;
   /** Texto legal corto del footer. */
   pieLegal?: string;
+  /** Navbar principal (sin submenús). */
+  navItems?: NavItemPromocional[];
+  /** Código de descuento mailing. */
+  descuento?: DescuentoPromocional;
+  /** Si false, omite hero grande (estilo más web). Default true. */
+  mostrarHero?: boolean;
 }
 
 const PLACEHOLDER = /^\[\[.+\]\]$/;
@@ -95,10 +115,25 @@ export function escaparConPlaceholders(valor: string): string {
   return escaparHtml(valor);
 }
 
+function filaNav(items: NavItemPromocional[]): string {
+  if (items.length === 0) return "";
+  const links = items
+    .map(
+      (i) =>
+        `<a href="${escaparConPlaceholders(i.url)}" style="display:inline-block;margin:4px 8px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.3;color:${COLORES_BODASESOR.cream};text-decoration:none;border-bottom:1px solid ${COLORES_BODASESOR.gold};">${escaparConPlaceholders(i.nombre)}</a>`,
+    )
+    .join("");
+  return `<tr>
+  <td align="center" style="padding:14px 16px 8px;background:${COLORES_BODASESOR.navy};">
+    ${links}
+  </td>
+</tr>`;
+}
+
 function filaLogo(logoUrl: string): string {
   const src = escaparConPlaceholders(logoUrl);
   return `<tr>
-  <td align="center" style="padding:28px 24px 16px;background:${COLORES_BODASESOR.navy};">
+  <td align="center" style="padding:16px 24px 20px;background:${COLORES_BODASESOR.navy};">
     <img src="${src}" alt="Bodasesor" width="180" style="display:block;width:180px;max-width:70%;height:auto;border:0;"/>
   </td>
 </tr>`;
@@ -146,65 +181,81 @@ function filaCta(texto: string, url: string): string {
 </tr>`;
 }
 
-function filaProductos(productos: ProductoPromocional[]): string {
-  if (productos.length === 0) return "";
-  const filas = productos
-    .map((p, i) => {
-      const foto = p.foto ?? `[[FOTO_PRODUCTO_${i + 1}]]`;
-      const titulo = escaparConPlaceholders(p.titulo);
-      const desc = escaparConPlaceholders(p.descripcion).replace(/\n/g, "<br/>");
-      const src = escaparConPlaceholders(foto);
-      const enlace = p.url
-        ? `<p style="margin:8px 0 0;"><a href="${escaparConPlaceholders(p.url)}" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${COLORES_BODASESOR.navy};font-weight:bold;text-decoration:underline;">Ver servicio</a></p>`
-        : "";
-      return `<tr>
-  <td style="padding:16px 32px;background:${COLORES_BODASESOR.blanco};">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-      <tr>
-        <td width="160" valign="top" style="padding:0 16px 0 0;">
-          <img src="${src}" alt="${titulo}" width="160" style="display:block;width:160px;max-width:100%;height:auto;border:0;"/>
-        </td>
-        <td valign="top">
-          <p style="margin:0 0 6px;font-family:Georgia,'Times New Roman',serif;font-size:18px;line-height:1.3;color:${COLORES_BODASESOR.navy};">${titulo}</p>
-          <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:${COLORES_BODASESOR.muted};">${desc}</p>
-          ${enlace}
-        </td>
-      </tr>
-    </table>
-  </td>
-</tr>`;
-    })
-    .join("\n");
-
-  return `<tr>
-  <td style="padding:24px 32px 4px;background:${COLORES_BODASESOR.blanco};">
-    <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:${COLORES_BODASESOR.navy};border-bottom:2px solid ${COLORES_BODASESOR.gold};padding-bottom:10px;">Experiencias destacadas</p>
-  </td>
-</tr>
-${filas}`;
+function celdaProducto(p: ProductoPromocional, i: number): string {
+  const foto = p.foto ?? `[[FOTO_PRODUCTO_${i + 1}]]`;
+  const titulo = escaparConPlaceholders(p.titulo);
+  const desc = escaparConPlaceholders(p.descripcion).replace(/\n/g, "<br/>");
+  const src = escaparConPlaceholders(foto);
+  const href = p.url ? escaparConPlaceholders(p.url) : "#";
+  return `<td width="50%" valign="top" style="padding:10px;">
+  <a href="${href}" style="text-decoration:none;">
+    <img src="${src}" alt="${titulo}" width="260" style="display:block;width:100%;max-width:260px;height:auto;border:0;margin:0 auto 10px;"/>
+  </a>
+  <p style="margin:0 0 6px;font-family:Georgia,'Times New Roman',serif;font-size:16px;line-height:1.3;color:${COLORES_BODASESOR.navy};text-align:center;">${titulo}</p>
+  <p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.45;color:${COLORES_BODASESOR.muted};text-align:center;">${desc}</p>
+  <p style="margin:0;text-align:center;">
+    <a href="${href}" style="display:inline-block;background:${COLORES_BODASESOR.navy};color:${COLORES_BODASESOR.blanco};text-decoration:none;padding:8px 14px;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:bold;border-radius:3px;">Ver servicio</a>
+  </p>
+</td>`;
 }
 
-function filaTestimonial(t: TestimonialPromocional): string {
-  const cita = escaparConPlaceholders(t.cita);
-  const autor = escaparConPlaceholders(t.autor);
+function filaProductos(productos: ProductoPromocional[]): string {
+  if (productos.length === 0) return "";
+  const pares: string[] = [];
+  for (let i = 0; i < productos.length; i += 2) {
+    const a = celdaProducto(productos[i]!, i);
+    const b =
+      i + 1 < productos.length
+        ? celdaProducto(productos[i + 1]!, i + 1)
+        : `<td width="50%" style="padding:10px;"></td>`;
+    pares.push(`<tr>${a}${b}</tr>`);
+  }
+
   return `<tr>
-  <td style="padding:28px 32px;background:${COLORES_BODASESOR.cream};">
-    <p style="margin:0 0 12px;font-family:Georgia,'Times New Roman',serif;font-size:17px;line-height:1.55;color:${COLORES_BODASESOR.navy};font-style:italic;">“${cita}”</p>
-    <p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${COLORES_BODASESOR.gold};font-weight:bold;">— ${autor}</p>
+  <td style="padding:24px 22px 4px;background:${COLORES_BODASESOR.blanco};">
+    <p style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:${COLORES_BODASESOR.navy};border-bottom:2px solid ${COLORES_BODASESOR.gold};padding-bottom:10px;">Nuestros servicios</p>
+  </td>
+</tr>
+<tr>
+  <td style="padding:8px 12px 20px;background:${COLORES_BODASESOR.blanco};">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+      ${pares.join("\n")}
+    </table>
   </td>
 </tr>`;
 }
 
 function filaBlog(blog: BlogPromocional): string {
   const titulo = escaparConPlaceholders(blog.titulo);
-  const extracto = escaparConPlaceholders(blog.extracto);
+  const extracto = escaparConPlaceholders(blog.extracto).replace(
+    /\n\n+/g,
+    "</p><p style=\"margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:" +
+      COLORES_BODASESOR.muted +
+      ';">',
+  );
   const url = escaparConPlaceholders(blog.url ?? "[[ENLACE_BLOG]]");
   return `<tr>
   <td style="padding:28px 32px;background:${COLORES_BODASESOR.blanco};">
     <p style="margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:${COLORES_BODASESOR.gold};">Del blog</p>
-    <p style="margin:0 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:18px;color:${COLORES_BODASESOR.navy};">${titulo}</p>
-    <p style="margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:${COLORES_BODASESOR.muted};">${extracto}</p>
-    <a href="${url}" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:${COLORES_BODASESOR.navy};font-weight:bold;text-decoration:underline;">Leer más</a>
+    <p style="margin:0 0 12px;font-family:Georgia,'Times New Roman',serif;font-size:20px;color:${COLORES_BODASESOR.navy};">${titulo}</p>
+    <p style="margin:0 0 12px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:${COLORES_BODASESOR.muted};">${extracto}</p>
+    <a href="${url}" style="display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:${COLORES_BODASESOR.navy};font-weight:bold;text-decoration:none;border-bottom:2px solid ${COLORES_BODASESOR.gold};padding-bottom:2px;">Ver más</a>
+  </td>
+</tr>`;
+}
+
+function filaDescuento(d: DescuentoPromocional): string {
+  const codigo = escaparConPlaceholders(d.codigo);
+  const texto = escaparConPlaceholders(
+    d.texto ??
+      `Usa este código en tu cotización y obtén ${d.porcentaje}% de descuento por mailing.`,
+  );
+  return `<tr>
+  <td align="center" style="padding:28px 32px;background:${COLORES_BODASESOR.cream};">
+    <p style="margin:0 0 8px;font-family:Arial,Helvetica,sans-serif;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:${COLORES_BODASESOR.gold};">Descuento mailing</p>
+    <p style="margin:0 0 10px;font-family:Georgia,'Times New Roman',serif;font-size:22px;color:${COLORES_BODASESOR.navy};">${d.porcentaje}% de descuento</p>
+    <p style="margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:${COLORES_BODASESOR.muted};">${texto}</p>
+    <p style="margin:0;display:inline-block;padding:12px 22px;border:2px dashed ${COLORES_BODASESOR.gold};font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:bold;letter-spacing:0.12em;color:${COLORES_BODASESOR.navy};">${codigo}</p>
   </td>
 </tr>`;
 }
@@ -272,13 +323,6 @@ En Bodasesor preparamos experiencias inolvidables en ${destino}. Te compartimos 
     input.pieLegal ??
     "Recibes este correo porque formas parte de la comunidad Bodasesor.";
 
-  const testimonial =
-    input.testimonial ??
-    ({
-      cita: `Con Bodasesor todo fluyó: el equipo, el lugar y el ambiente en ${destino} superaron lo que imaginábamos.`,
-      autor: "Cliente Bodasesor",
-    } satisfies TestimonialPromocional);
-
   const blog =
     input.blog ??
     ({
@@ -287,6 +331,17 @@ En Bodasesor preparamos experiencias inolvidables en ${destino}. Te compartimos 
         "Ideas de ambientación, timing y proveedores locales para que tu evento se sienta auténtico desde el primer momento.",
       url: "[[ENLACE_BLOG]]",
     } satisfies BlogPromocional);
+
+  const navItems = input.navItems ?? [];
+  const descuento =
+    input.descuento ??
+    ({
+      porcentaje: 10,
+      codigo: "MAILING10",
+      texto:
+        "Menciona este código al cotizar por WhatsApp y recibe 10% de descuento por mailing.",
+    } satisfies DescuentoPromocional);
+  const mostrarHero = input.mostrarHero !== false;
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -299,19 +354,20 @@ En Bodasesor preparamos experiencias inolvidables en ${destino}. Te compartimos 
 </head>
 <body style="margin:0;padding:0;background:${COLORES_BODASESOR.cream};">
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">
-    Ideas y espacios en ${escaparHtml(destino)} con Bodasesor.
+    Ideas y espacios en ${escaparHtml(destino)} con Bodasesor. Código MAILING10: 10% de descuento.
   </div>
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:${COLORES_BODASESOR.cream};padding:24px 0;">
     <tr>
       <td align="center" style="padding:0 12px;">
         <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;background:${COLORES_BODASESOR.blanco};">
+${filaNav(navItems)}
 ${filaLogo(logoUrl)}
-${filaHero(heroFoto, input.heroTitulo, input.heroSubtitulo)}
+${mostrarHero ? filaHero(heroFoto, input.heroTitulo, input.heroSubtitulo) : ""}
 ${filaSaludo(saludo)}
 ${filaCta(ctaTexto, ctaUrl)}
-${filaProductos(productos)}
-${filaTestimonial(testimonial)}
 ${filaBlog(blog)}
+${filaProductos(productos)}
+${filaDescuento(descuento)}
 ${filaUrgencia(urgencia)}
 ${filaSocial(
   input.facebookUrl ?? "[[ENLACE_FACEBOOK]]",

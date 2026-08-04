@@ -13,12 +13,15 @@ import {
   type MediaItem,
 } from "../panel/media-store.js";
 import {
+  articuloBlogAleatorio,
   conocimientoParaPrompt,
   enlaceWhatsAppCotizar,
   leerConocimiento,
-  sugerirArticuloBlog,
+  navPrincipalSitio,
   sugerirProductosParaBrief,
+  tresParrafosBlog,
 } from "../sitio/conocimiento.js";
+import { leerReglasComposer } from "../panel/reglas-composer.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -109,6 +112,7 @@ async function resolverOGenerar(input: {
 export async function componerEmail(input: ComposerInput): Promise<ComposerResultado> {
   const instrucciones = input.brief.trim();
   const sitio = await leerConocimiento();
+  const reglas = await leerReglasComposer();
   const briefAmpliado = [
     instrucciones,
     input.ideaTitulo ? `Idea elegida: ${input.ideaTitulo}` : "",
@@ -122,6 +126,7 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     baseUrl: input.baseUrl,
     generarImagen: false,
     contextoSitio: conocimientoParaPrompt(sitio),
+    reglas: reglas.texto,
     ...(input.marca !== undefined ? { marca: input.marca } : {}),
   });
 
@@ -141,37 +146,45 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
   const ctaUrl = enlaceWhatsAppCotizar(
     sitio.redes.whatsapp || sitio.cotizarUrl,
   );
-  const sugeridos = sugerirProductosParaBrief(sitio, briefAmpliado, 3);
-  const blogSug = sugerirArticuloBlog(sitio, briefAmpliado);
+  const sugeridos = sugerirProductosParaBrief(sitio, briefAmpliado, 8);
+  const blogSug = articuloBlogAleatorio(sitio);
 
   let productos = [...(promo.productos ?? [])];
-  if (productos.length === 0 && sugeridos.length > 0) {
-    productos = sugeridos.map((p) => ({
-      titulo: p.nombre,
-      descripcion: `Servicio Bodasesor: ${p.nombre}.`,
-      url: p.url,
-    }));
-  } else {
-    productos = productos.map((p, i) => {
-      const match = sugeridos[i];
-      return {
-        ...p,
-        url: p.url && p.url.startsWith("http") ? p.url : match?.url,
-      };
-    });
+  if (productos.length < 8 && sugeridos.length > 0) {
+    const usados = new Set(
+      productos.map((p) => (p.url || p.titulo).toLowerCase()),
+    );
+    for (const s of sugeridos) {
+      if (productos.length >= 8) break;
+      const key = s.url.toLowerCase();
+      if (usados.has(key) || usados.has(s.nombre.toLowerCase())) continue;
+      productos.push({
+        titulo: s.nombre,
+        descripcion: s.descripcion || `Servicio Bodasesor: ${s.nombre}.`,
+        url: s.url,
+      });
+      usados.add(key);
+    }
   }
+  productos = productos.slice(0, 8).map((p, i) => {
+    const match = sugeridos[i];
+    return {
+      ...p,
+      url: p.url && p.url.startsWith("http") ? p.url : match?.url,
+      descripcion:
+        p.descripcion ||
+        match?.descripcion ||
+        `Servicio Bodasesor: ${p.titulo}.`,
+    };
+  });
 
+  const blogBase = blogSug;
   const blog = {
-    titulo: promo.blog?.titulo ?? blogSug?.titulo ?? "Ideas en el blog Bodasesor",
-    extracto:
-      promo.blog?.extracto ??
-      "Consejos y tendencias para tu celebración.",
-    url:
-      (promo.blog?.url && promo.blog.url.startsWith("http")
-        ? promo.blog.url
-        : undefined) ??
-      blogSug?.url ??
-      sitio.blogUrl,
+    titulo: blogBase?.titulo ?? "Ideas en el blog Bodasesor",
+    extracto: blogBase
+      ? tresParrafosBlog(blogBase)
+      : "Consejos y tendencias para tu celebración.\n\nEn Bodasesor compartimos ideas prácticas para bodas y eventos.\n\nDescubre más en nuestro blog.",
+    url: blogBase?.url ?? sitio.blogUrl,
   };
 
   const logoRes = await resolverOGenerar({
@@ -243,6 +256,13 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     ctaUrl,
     blog,
     productos,
+    navItems: navPrincipalSitio(sitio),
+    descuento: {
+      porcentaje: 10,
+      codigo: "MAILING10",
+      texto:
+        "Menciona este código al cotizar por WhatsApp y recibe 10% de descuento por mailing.",
+    },
     facebookUrl: sitio.redes.facebook ?? "[[ENLACE_FACEBOOK]]",
     instagramUrl: sitio.redes.instagram ?? "[[ENLACE_INSTAGRAM]]",
     whatsappUrl: ctaUrl,

@@ -6,6 +6,11 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import {
+  asegurarPersistencia,
+  mediaDirPersistente,
+  rutasPersistencia,
+} from "../persistencia/rutas.js";
 
 export type TipoMedia = "logo" | "hero" | "producto" | "otro";
 
@@ -26,15 +31,13 @@ export interface MediaItem {
   creadoEn: string;
 }
 
-function archivoCatalogo(): string {
-  return (
-    process.env.MEDIA_LIBRARY_PATH ??
-    path.resolve(process.cwd(), "data", "media-library.json")
-  );
+async function archivoCatalogo(): Promise<string> {
+  await asegurarPersistencia();
+  return rutasPersistencia().mediaLibrary;
 }
 
 export function mediaDir(): string {
-  return process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "media");
+  return mediaDirPersistente();
 }
 
 function basePublica(): string {
@@ -55,7 +58,7 @@ export function urlPublicaMedia(
 
 async function leerTodos(): Promise<MediaItem[]> {
   try {
-    const raw = await fs.readFile(archivoCatalogo(), "utf8");
+    const raw = await fs.readFile(await archivoCatalogo(), "utf8");
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as MediaItem[]) : [];
   } catch (error: unknown) {
@@ -72,7 +75,7 @@ async function leerTodos(): Promise<MediaItem[]> {
 }
 
 async function escribirTodos(items: MediaItem[]): Promise<void> {
-  const archivo = archivoCatalogo();
+  const archivo = await archivoCatalogo();
   await fs.mkdir(path.dirname(archivo), { recursive: true });
   await fs.writeFile(archivo, JSON.stringify(items, null, 2), "utf8");
 }

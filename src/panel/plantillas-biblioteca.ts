@@ -6,6 +6,10 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import {
+  asegurarPersistencia,
+  rutasPersistencia,
+} from "../persistencia/rutas.js";
 
 export interface PlantillaBiblioteca {
   id: string;
@@ -24,16 +28,14 @@ export interface PlantillaBiblioteca {
   borradorId?: string;
 }
 
-function archivoBiblioteca(): string {
-  return (
-    process.env.PLANTILLAS_BIBLIOTECA_PATH ??
-    path.resolve(process.cwd(), "data", "plantillas-biblioteca.json")
-  );
+async function archivoBiblioteca(): Promise<string> {
+  await asegurarPersistencia();
+  return rutasPersistencia().biblioteca;
 }
 
 async function leerTodos(): Promise<PlantillaBiblioteca[]> {
   try {
-    const raw = await fs.readFile(archivoBiblioteca(), "utf8");
+    const raw = await fs.readFile(await archivoBiblioteca(), "utf8");
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as PlantillaBiblioteca[]) : [];
   } catch (error: unknown) {
@@ -50,7 +52,7 @@ async function leerTodos(): Promise<PlantillaBiblioteca[]> {
 }
 
 async function escribirTodos(items: PlantillaBiblioteca[]): Promise<void> {
-  const archivo = archivoBiblioteca();
+  const archivo = await archivoBiblioteca();
   await fs.mkdir(path.dirname(archivo), { recursive: true });
   await fs.writeFile(archivo, JSON.stringify(items, null, 2), "utf8");
 }

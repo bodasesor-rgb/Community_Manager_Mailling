@@ -8,6 +8,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { mediaDirPersistente } from "../persistencia/rutas.js";
 import { candidatosImagenPredict } from "./probe.js";
 
 export interface GenerarImagenInput {
@@ -46,7 +47,7 @@ interface GeminiImageResponse {
 }
 
 function mediaDir(): string {
-  return process.env.MEDIA_DIR ?? path.resolve(process.cwd(), "media");
+  return mediaDirPersistente();
 }
 
 function basePublica(): string {

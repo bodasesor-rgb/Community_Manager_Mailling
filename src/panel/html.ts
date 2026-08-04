@@ -78,6 +78,10 @@ function layout(titulo: string, activo: PaginaActiva, cuerpo: string): string {
     .idea{border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;background:#fff;text-align:left}
     .idea:hover,.idea.sel{border-color:var(--brand);background:var(--ok-bg)}
     .idea strong{display:block;color:var(--brand);margin-bottom:4px}
+    .reglas-box{border:1px solid var(--line);border-radius:12px;padding:14px;background:linear-gradient(180deg,#f7fafc,#fff);margin:0 0 16px}
+    .reglas-box strong{display:block;color:var(--brand);margin-bottom:4px;font-family:Fraunces,Georgia,serif;font-size:1.05rem}
+    .reglas-box .muted{display:block;margin-bottom:10px;font-size:.9rem}
+    .reglas-box textarea{min-height:180px;font-family:"Source Sans 3",system-ui,sans-serif;font-size:.92rem;line-height:1.45}
     .logo-box{border:1px dashed var(--line);border-radius:12px;padding:16px;background:#fafbfd;display:grid;gap:10px;justify-items:start}
     .logo-box img{max-height:72px;max-width:220px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px}
     .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:8px}
@@ -563,8 +567,18 @@ export function paginaCrearHtml(): string {
     "crear",
     `<section class="card">
       <h2>Crear mail</h2>
-      <p class="lead">Escribe en <strong>palabras normales</strong> qué debe decir el correo (a quién, qué ofrecer, qué enlazar). La IA lo convierte en HTML de plantilla. No necesitas escribir código.</p>
+      <p class="lead">Escribe en <strong>palabras normales</strong> qué debe decir el correo (a quién, qué ofrecer, qué enlazar). La IA lo convierte en HTML de plantilla. No necesitas escribir código. Plantillas, logos y reglas se guardan en Hostinger fuera del deploy para que no se borren al actualizar.</p>
       <div id="msg"></div>
+      <div class="reglas-box">
+        <strong>Reglas fijas del correo (estructura)</strong>
+        <span class="muted">Estas reglas se aplican siempre al generar. Se guardan en el servidor y solo se borran si las limpias tú.</span>
+        <textarea id="reglas" style="font-family:inherit"></textarea>
+        <div class="row" style="margin:10px 0 0">
+          <button type="button" class="sec" id="btn-reglas-guardar">Guardar reglas</button>
+          <button type="button" class="sec" id="btn-reglas-default">Restaurar reglas por defecto</button>
+          <span id="reglasMeta" class="muted"></span>
+        </div>
+      </div>
       <div class="grid">
         <div>
           <label>Instrucciones del mail (lenguaje natural)
@@ -617,6 +631,44 @@ export function paginaCrearHtml(): string {
       const preview = document.getElementById('preview');
       function setMsg(ok, text){ msg.innerHTML = '<div class="' + (ok?'ok':'err') + '">' + escapeHtml(text) + '</div>'; }
       function escapeHtml(s){return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+      async function cargarReglas(){
+        const res = await fetch('/api/composer/reglas');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'No se pudieron cargar las reglas');
+        document.getElementById('reglas').value = data.texto || '';
+        document.getElementById('reglasMeta').textContent = data.actualizadoEn
+          ? ('Guardadas: ' + new Date(data.actualizadoEn).toLocaleString('es-MX'))
+          : '';
+      }
+      document.getElementById('btn-reglas-guardar').onclick = async () => {
+        try {
+          const res = await fetch('/api/composer/reglas', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({ texto: document.getElementById('reglas').value })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'No se pudieron guardar');
+          document.getElementById('reglasMeta').textContent =
+            'Guardadas: ' + new Date(data.actualizadoEn).toLocaleString('es-MX');
+          setMsg(true, 'Reglas guardadas. Se usarán en cada generación.');
+        } catch (err) { setMsg(false, err.message || String(err)); }
+      };
+      document.getElementById('btn-reglas-default').onclick = async () => {
+        try {
+          const res = await fetch('/api/composer/reglas', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({ restaurarDefault: true })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'No se pudieron restaurar');
+          document.getElementById('reglas').value = data.texto || '';
+          document.getElementById('reglasMeta').textContent =
+            'Guardadas: ' + new Date(data.actualizadoEn).toLocaleString('es-MX');
+          setMsg(true, 'Reglas por defecto restauradas.');
+        } catch (err) { setMsg(false, err.message || String(err)); }
+      };
+      cargarReglas().catch(err => setMsg(false, err.message || String(err)));
 
       async function cargarGaleria(){
         const res = await fetch('/api/media');
