@@ -1,6 +1,6 @@
 /**
- * Modelos Gemini permitidos: SOLO los configurados en env.
- * Sin cascadas largas; remapea modelos retirados (p.ej. gemini-2.0-flash).
+ * Modelos Gemini permitidos: el configurado en env + 1–2 fallbacks modernos.
+ * Remapea 2.0/2.5 (retirados o bloqueados para keys nuevas) → 3.5 Flash.
  */
 
 export interface ProbeModeloResultado {
@@ -10,23 +10,46 @@ export interface ProbeModeloResultado {
   detalle?: string;
 }
 
-/** Modelos de texto ya retirados por Google → reemplazo operativo. */
+/** Default para cuentas nuevas (Google bloquea 2.5 Flash a keys nuevas). */
+const TEXTO_DEFAULT = "gemini-3.5-flash";
+
+/** Modelos de texto ya retirados / bloqueados para usuarios nuevos. */
 const TEXTO_REEMPLAZO: Record<string, string> = {
-  "gemini-2.0-flash": "gemini-2.5-flash",
-  "gemini-2.0-flash-001": "gemini-2.5-flash",
-  "gemini-2.0-flash-lite": "gemini-2.5-flash-lite",
-  "gemini-2.0-flash-lite-001": "gemini-2.5-flash-lite",
+  "gemini-2.0-flash": TEXTO_DEFAULT,
+  "gemini-2.0-flash-001": TEXTO_DEFAULT,
+  "gemini-2.0-flash-lite": "gemini-3.5-flash-lite",
+  "gemini-2.0-flash-lite-001": "gemini-3.5-flash-lite",
+  "gemini-2.5-flash": TEXTO_DEFAULT,
+  "gemini-2.5-flash-001": TEXTO_DEFAULT,
+  "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+  "gemini-2.5-flash-lite-001": "gemini-3.5-flash-lite",
+  "gemini-2.5-pro": TEXTO_DEFAULT,
 };
+
+/** Fallbacks cortos si el modelo activo falla con 404. */
+const TEXTO_FALLBACKS = [
+  "gemini-3.5-flash",
+  "gemini-3.6-flash",
+  "gemini-flash-latest",
+];
 
 /** Modelo de texto activo (respeta GEMINI_MODEL, corrige retirados). */
 export function modeloTextoActivo(): string {
-  const pedido = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+  const pedido = process.env.GEMINI_MODEL?.trim() || TEXTO_DEFAULT;
   return TEXTO_REEMPLAZO[pedido] ?? pedido;
 }
 
-/** Texto: únicamente el modelo activo. */
+/** Texto: modelo activo + fallbacks modernos (sin duplicados). */
 export function candidatosTexto(): string[] {
-  return [modeloTextoActivo()];
+  const vistos = new Set<string>();
+  const out: string[] = [];
+  for (const m of [modeloTextoActivo(), ...TEXTO_FALLBACKS]) {
+    if (!vistos.has(m)) {
+      vistos.add(m);
+      out.push(m);
+    }
+  }
+  return out;
 }
 
 /** Imagen predict: únicamente IMAGEN_MODEL (default imagen-3.0-generate-002). */

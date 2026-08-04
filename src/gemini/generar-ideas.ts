@@ -2,7 +2,7 @@
  * Ideas de temas para el composer (solo texto, barato).
  */
 
-import { candidatosTexto } from "./probe.js";
+import { generarTextoGemini } from "./cliente-texto.js";
 
 export interface IdeaTema {
   titulo: string;
@@ -15,11 +15,6 @@ export async function generarIdeasTemas(brief: string): Promise<{
   ideas: IdeaTema[];
   modelo: string;
 }> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY no configurada");
-  }
-  const modelo = candidatosTexto()[0]!;
   const prompt = `Eres planificador de newsletters para Bodasesor (bodas y eventos).
 A partir de este brief del usuario, propón exactamente 4 ideas de tema para un email promocional.
 Brief:
@@ -40,35 +35,13 @@ Devuelve SOLO JSON válido (sin markdown):
 }
 Sin emojis. Ideas concretas y distintas entre sí.`;
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.8,
-        maxOutputTokens: 1024,
-        responseMimeType: "application/json",
-      },
-    }),
+  const { modelo, texto } = await generarTextoGemini({
+    prompt,
+    temperature: 0.8,
+    maxOutputTokens: 1024,
+    responseMimeType: "application/json",
   });
-  const data = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    error?: { message?: string };
-  };
-  if (!response.ok) {
-    throw new Error(
-      `Gemini ideas (${response.status}): ${data.error?.message ?? "error"}`,
-    );
-  }
-  const texto = data.candidates?.[0]?.content?.parts
-    ?.map((p) => p.text ?? "")
-    .join("")
-    .trim();
-  if (!texto) {
-    throw new Error("Gemini no devolvió ideas");
-  }
+
   const limpio = texto
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
@@ -78,7 +51,7 @@ Sin emojis. Ideas concretas y distintas entre sí.`;
     .filter((i) => i.titulo && i.destino)
     .slice(0, 4);
   if (ideas.length === 0) {
-    throw new Error("No se obtuvieron ideas válidas");
+    throw new Error("Gemini no devolvió ideas válidas");
   }
   return { ideas, modelo };
 }

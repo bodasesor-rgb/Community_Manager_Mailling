@@ -51,7 +51,7 @@ async function getModelo(
 
 /**
  * Verifica SOLO los agentes configurados en env:
- * - GEMINI_MODEL (default gemini-2.5-flash; 2.0-flash se remapea porque Google lo retiró)
+ * - GEMINI_MODEL (default gemini-3.5-flash; 2.0/2.5 se remapean para keys nuevas)
  * - IMAGEN_MODEL (default imagen-3.0-generate-002)
  * Sin alternativas ni generación.
  */

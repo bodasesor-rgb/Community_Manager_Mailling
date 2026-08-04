@@ -1,11 +1,11 @@
 /**
- * Generación de contenido de email con Gemini Flash 2.0 (+ fallback si Google lo bloquea).
- * Imágenes: Imagen 3 (con fallback a Imagen 4).
+ * Generación de contenido de email con Gemini (3.5 Flash + fallbacks).
+ * Imágenes: Imagen / generateContent según env.
  */
 
 import type { GenerarPlantillaHtmlInput } from "../plantillas/generador.js";
+import { generarTextoGemini } from "./cliente-texto.js";
 import { generarImagenEmail, type ImagenGenerada } from "./generar-imagen.js";
-import { candidatosTexto } from "./probe.js";
 
 export interface GenerarContenidoInput {
   brief: string;
@@ -25,30 +25,14 @@ export interface ContenidoGenerado {
   modeloTexto: string;
   imagen?: ImagenGenerada;
   imagePrompt?: string;
-  /** Aviso si no se pudo usar exactamente Flash 2.0 / Imagen 3. */
+  /** Aviso si el modelo o la imagen usaron un fallback. */
   advertencia?: string;
-}
-
-interface GeminiPart {
-  text?: string;
-}
-
-interface GeminiResponse {
-  candidates?: Array<{
-    content?: {
-      parts?: GeminiPart[];
-    };
-  }>;
-  error?: {
-    message?: string;
-  };
 }
 
 export async function generarContenidoEmail(
   input: GenerarContenidoInput,
 ): Promise<ContenidoGenerado> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  if (!process.env.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY no configurada");
   }
 
@@ -99,39 +83,11 @@ Reglas:
 - Mantén {{ contact.FIRSTNAME }} literal en el saludo.
 - imagePrompt en inglés, fotográfico.`;
 
-  const body = {
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    generationConfig: {
-      temperature: 0.7,
-      responseMimeType: "application/json",
-    },
-  };
-
-  // Solo el modelo configurado (GEMINI_MODEL) — sin cascada que gaste cuota.
-  const modelo = candidatosTexto()[0]!;
-  const apiVersion = "v1beta";
-  const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${modelo}:generateContent?key=${encodeURIComponent(apiKey)}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+  const { modelo, texto } = await generarTextoGemini({
+    prompt,
+    temperature: 0.7,
+    responseMimeType: "application/json",
   });
-  const data = (await response.json()) as GeminiResponse;
-
-  if (!response.ok) {
-    throw new Error(
-      `Gemini ${modelo} [${apiVersion}] (${response.status}): ${data.error?.message ?? JSON.stringify(data)}`,
-    );
-  }
-
-  const texto = data.candidates?.[0]?.content?.parts
-    ?.map((p) => p.text ?? "")
-    .join("")
-    .trim();
-
-  if (!texto) {
-    throw new Error(`Gemini ${modelo} no devolvió contenido`);
-  }
 
   const parsed = JSON.parse(limpiarJson(texto)) as {
     asunto?: string;
