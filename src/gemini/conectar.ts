@@ -50,14 +50,17 @@ async function getModelo(
 }
 
 /**
- * Verifica solo los agentes pedidos: Flash 2.0 (texto) e Imagen 3.
+ * Verifica los agentes pedidos: Flash 2.0 (texto) e Imagen 3.
+ * También reporta Imagen 4 si 3 ya no existe en la API.
  * No genera contenido.
  */
 export async function conectarAgentesSolicitados(): Promise<{
   apiKeyPresente: boolean;
   texto: ConexionModelo;
   imagen: ConexionModelo;
+  imagenAlternativa: ConexionModelo | null;
   listos: boolean;
+  nota?: string;
 }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -73,34 +76,41 @@ export async function conectarAgentesSolicitados(): Promise<{
         conectado: false,
         detalle: "GEMINI_API_KEY no configurada",
       },
+      imagenAlternativa: null,
       listos: false,
     };
   }
 
-  const textoModelo = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
-  const imagenModelo =
-    process.env.IMAGEN_MODEL?.trim() || "imagen-3.0-generate-002";
-
-  // Pedidos explícitos del proyecto (también probamos alias 001 de Imagen 3).
-  const texto = await getModelo(apiKey, textoModelo);
-  let imagen = await getModelo(apiKey, imagenModelo);
-  if (!imagen.conectado && imagenModelo === "imagen-3.0-generate-002") {
-    const alt = await getModelo(apiKey, "imagen-3.0-generate-001");
-    if (alt.conectado) {
-      imagen = alt;
+  const texto = await getModelo(apiKey, "gemini-2.0-flash");
+  let imagen = await getModelo(apiKey, "imagen-3.0-generate-002");
+  if (!imagen.conectado) {
+    const alt3 = await getModelo(apiKey, "imagen-3.0-generate-001");
+    if (alt3.conectado) {
+      imagen = alt3;
     }
   }
 
-  // Si el default operativo no es 2.0, igual reportamos el 2.0 pedido.
-  let textoFlash20 = texto;
-  if (textoModelo !== "gemini-2.0-flash") {
-    textoFlash20 = await getModelo(apiKey, "gemini-2.0-flash");
+  let imagenAlternativa: ConexionModelo | null = null;
+  if (!imagen.conectado) {
+    imagenAlternativa = await getModelo(apiKey, "imagen-4.0-generate-001");
   }
+
+  const listos = texto.conectado && imagen.conectado;
+  const listosConAlt =
+    texto.conectado && (imagen.conectado || Boolean(imagenAlternativa?.conectado));
 
   return {
     apiKeyPresente: true,
-    texto: textoFlash20.conectado ? textoFlash20 : texto,
+    texto,
     imagen,
-    listos: (textoFlash20.conectado || texto.conectado) && imagen.conectado,
+    imagenAlternativa,
+    listos,
+    ...(listos
+      ? {}
+      : {
+          nota: listosConAlt
+            ? "Flash 2.0 OK. Imagen 3 no existe en esta API key; Imagen 4 sí está visible (sin generar aún)."
+            : "No se pudo conectar el par solicitado Flash 2.0 + Imagen 3.",
+        }),
   };
 }
