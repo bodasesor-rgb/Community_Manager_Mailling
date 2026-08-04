@@ -803,7 +803,7 @@ export function paginaCrearHtml(): string {
           </div>
           <div class="section-block" id="box-mods">
             <h3>4 · Modificaciones puntuales</h3>
-            <p class="muted">Si algo no te gusta, escríbelo aquí. Solo se cambian esas cosas: no borra ni regenera todo el mail.</p>
+            <p class="muted">Si algo no te gusta, escríbelo aquí con el texto nuevo claro. Ej.: «Cambia el titular a: Cancún con luz dorada». Solo se cambian esas cosas: no regenera todo el mail.</p>
             <label>Qué quiero cambiar
               <textarea id="modificaciones" style="font-family:inherit;min-height:110px" placeholder="Ejemplos:&#10;- Cambia el asunto a algo más corto&#10;- Quita el producto de sillas y pon florería&#10;- El saludo que diga «estimado cliente»&#10;- Haz el código de descuento más grande"></textarea>
             </label>
@@ -1059,8 +1059,8 @@ export function paginaCrearHtml(): string {
 
       document.getElementById('btn-ajustar').onclick = async () => {
         const mods = document.getElementById('modificaciones').value.trim();
-        const html = document.getElementById('htmlContent').value || ultimoHtml;
-        if (!html) { setMsg(false, 'Primero genera un borrador.'); return; }
+        const htmlAntes = document.getElementById('htmlContent').value || ultimoHtml;
+        if (!htmlAntes) { setMsg(false, 'Primero genera un borrador.'); return; }
         if (!mods) { setMsg(false, 'Escribe qué quieres modificar.'); return; }
         const btn = document.getElementById('btn-ajustar');
         btn.disabled = true; btn.textContent = 'Aplicando…';
@@ -1071,7 +1071,7 @@ export function paginaCrearHtml(): string {
           const res = await fetch('/api/composer/ajustar', {
             method:'POST', headers:{'content-type':'application/json'},
             body: JSON.stringify({
-              htmlContent: html,
+              htmlContent: htmlAntes,
               modificaciones: mods,
               asunto: document.getElementById('asunto').value,
               nombre: document.getElementById('nombre').value,
@@ -1085,17 +1085,28 @@ export function paginaCrearHtml(): string {
               : '';
             throw new Error((data.error || 'No se pudo aplicar el ajuste') + extra);
           }
-          ultimoHtml = data.htmlContent;
-          document.getElementById('htmlContent').value = data.htmlContent;
+          const htmlNuevo = data.htmlContent || '';
+          if (!htmlNuevo) throw new Error('La respuesta no trajo HTML nuevo.');
+          const mismoHtml = htmlNuevo === htmlAntes;
+          const mismoAsunto = (data.asunto || '') === (document.getElementById('asunto').value || '');
+          if (mismoHtml && mismoAsunto) {
+            throw new Error('No hubo cambio real en el correo. Reformula el pedido, ej. «Cambia el titular a: …».');
+          }
+          ultimoHtml = htmlNuevo;
+          document.getElementById('htmlContent').value = htmlNuevo;
           document.getElementById('asunto').value = data.asunto || document.getElementById('asunto').value;
           document.getElementById('nombre').value = data.nombre || document.getElementById('nombre').value;
-          preview.srcdoc = data.htmlContent;
+          // Forzar refresco del iframe
+          preview.srcdoc = '';
+          preview.srcdoc = htmlNuevo;
           document.getElementById('btn-guardar').disabled = false;
           document.getElementById('btn-guardar').classList.add('pulse');
           const segs = Math.round((Date.now() - t0) / 1000);
           stopEta('Listo en ' + fmtEta(segs));
           document.getElementById('modsMeta').textContent =
-            'Ajuste listo en ' + segs + 's. Puedes pedir otro cambio o Guardar mail.';
+            (mismoHtml ? 'Asunto/nombre actualizados' : 'Preview actualizado') +
+            ' en ' + segs + 's. Puedes pedir otro cambio o Guardar mail.';
+          document.getElementById('modificaciones').value = '';
           setMsg(true, 'Cambios aplicados: ' + (data.cambiosAplicados || mods));
         } catch (err) {
           stopEta();
