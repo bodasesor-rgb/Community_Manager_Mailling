@@ -44,6 +44,7 @@ import {
   paginaInicioHtml,
   paginaPlantillasHtml,
 } from "./panel/html.js";
+import { BUILD_ISO, BUILD_LABEL } from "./build-info.js";
 
 const puerto = Number(process.env.PORT ?? 3000);
 const provider: EmailProvider = new BrevoProvider();
@@ -250,6 +251,8 @@ const servidor = http.createServer((req, res) => {
           servicio: "Community Manager Mailling",
           provider: "brevo",
           panel: "/panel",
+          ultimaActualizacion: BUILD_LABEL,
+          ultimaActualizacionIso: BUILD_ISO,
           modelos: {
             texto: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
             imagenPredict: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",

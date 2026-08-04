@@ -8,6 +8,7 @@
   },
   "main": "dist/src/server.js",
   "scripts": {
+    "prebuild": "node scripts/stamp-build-info.mjs",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/src/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",

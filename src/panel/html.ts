@@ -3,6 +3,8 @@
  * Identidad Bodasesor: azul, blanco y gris + logo.
  */
 
+import { BUILD_ISO, BUILD_LABEL } from "../build-info.js";
+
 function layout(titulo: string, activo: "inicio" | "contactos" | "plantillas", cuerpo: string): string {
   return `<!DOCTYPE html>
 <html lang="es">
@@ -39,9 +41,12 @@ function layout(titulo: string, activo: "inicio" | "contactos" | "plantillas", c
     .logo-link{display:flex;align-items:center;gap:12px;text-decoration:none;color:#fff}
     .logo-link img{height:48px;width:auto;display:block}
     .logo-sub{font-size:.9rem;opacity:.85}
+    .topbar-right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-left:auto}
     nav{display:flex;gap:8px;flex-wrap:wrap}
     nav a{padding:9px 14px;border:1px solid rgba(255,255,255,.28);border-radius:999px;text-decoration:none;color:#fff;background:rgba(255,255,255,.06)}
     nav a.activo,nav a:hover{background:#fff;color:var(--brand);border-color:#fff}
+    .build-stamp{font-size:.72rem;line-height:1.35;opacity:.88;text-align:right;color:rgba(255,255,255,.92);white-space:nowrap}
+    .build-stamp strong{display:block;font-weight:600;letter-spacing:.02em}
     .shell{max-width:1100px;margin:0 auto;padding:24px 16px 56px}
     .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;box-shadow:0 18px 40px rgba(20,50,92,.08)}
     h2{font-family:Fraunces,Georgia,serif;margin:0 0 8px;color:var(--brand)}
@@ -76,11 +81,17 @@ function layout(titulo: string, activo: "inicio" | "contactos" | "plantillas", c
         <img src="/assets/logo-white.svg" alt="Bodasesor Eventos"/>
         <span class="logo-sub">Panel de correos</span>
       </a>
-      <nav>
-        <a href="/panel" class="${activo === "inicio" ? "activo" : ""}">Inicio</a>
-        <a href="/panel/contactos" class="${activo === "contactos" ? "activo" : ""}">Contactos</a>
-        <a href="/panel/plantillas" class="${activo === "plantillas" ? "activo" : ""}">Plantillas</a>
-      </nav>
+      <div class="topbar-right">
+        <nav>
+          <a href="/panel" class="${activo === "inicio" ? "activo" : ""}">Inicio</a>
+          <a href="/panel/contactos" class="${activo === "contactos" ? "activo" : ""}">Contactos</a>
+          <a href="/panel/plantillas" class="${activo === "plantillas" ? "activo" : ""}">Plantillas</a>
+        </nav>
+        <div class="build-stamp" title="${BUILD_ISO}">
+          <strong>Última actualización</strong>
+          ${BUILD_LABEL}
+        </div>
+      </div>
     </div>
   </header>
   <div class="shell">
