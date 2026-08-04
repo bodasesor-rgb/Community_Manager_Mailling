@@ -166,15 +166,24 @@ export function paginaInicioHtml(): string {
     "Inicio",
     "inicio",
     `<section class="card">
-      <h2>Bienvenido</h2>
-      <p class="lead">Escribe en palabras normales qué quieres comunicar. La IA lo convierte en plantilla HTML. Las plantillas se guardan en el proyecto y, al aprobar, también en Brevo.</p>
-      <div class="row">
-        <a href="/panel/crear"><button type="button">Crear mail</button></a>
-        <a href="/panel/sitio"><button type="button" class="sec">Mi sitio</button></a>
-        <a href="/panel/plantillas"><button type="button" class="sec">Plantillas</button></a>
-        <a href="/panel/contactos"><button type="button" class="sec">Contactos</button></a>
+      <div class="panel-hero">
+        <div>
+          <h2>Bienvenido</h2>
+          <p class="lead">Crea correos con la estructura Bodasesor, guárdalos y reutilízalos cuando quieras. Nada se borra al actualizar, solo si tú lo eliminas.</p>
+        </div>
       </div>
-      <p class="muted">API JSON sigue en <code>/health</code>. Este panel es la interfaz visual.</p>
+      <div class="steps">
+        <div class="step"><span>1</span> Crear mail</div>
+        <div class="step"><span>2</span> Guardar</div>
+        <div class="step"><span>3</span> Elegir / reciclar</div>
+      </div>
+      <div class="row">
+        <a class="btn pulse" href="/panel/crear">Crear mail</a>
+        <a class="btn sec" href="/panel/plantillas">Mails guardados</a>
+        <a class="btn sec" href="/panel/sitio">Mi sitio</a>
+        <a class="btn sec" href="/panel/contactos">Contactos</a>
+      </div>
+      <p class="muted" style="margin-top:18px">API JSON sigue en <code>/health</code>. Este panel es la interfaz visual.</p>
     </section>`,
   );
 }
