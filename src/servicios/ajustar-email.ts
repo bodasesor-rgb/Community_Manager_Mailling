@@ -131,31 +131,61 @@ function extraerCampos(html: string): CamposVisibles {
     subtitulo = plainDeHtml(bloqueHero[1]);
   }
 
-  const saludoMatch = html.match(
-    /<p\b[^>]*>([\s\S]*?\{\{\s*contact\.FIRSTNAME\s*\}\}[\s\S]*?)<\/p>/i,
-  );
-  const saludoInner = saludoMatch?.[1]?.trim() || "";
+  let saludoInner = "";
+  for (const m of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const inner = m[1] || "";
+    if (/\{\{\s*contact\.FIRSTNAME\s*\}\}/i.test(inner)) {
+      saludoInner = inner.trim();
+      break;
+    }
+  }
 
   const codigo =
     (html.match(/\b(MAILING\d{1,3})\b/i)?.[1] || "").toUpperCase() || "";
 
-  const ctaMatch = html.match(
-    /<a\b[^>]*(?:whatsapp|cotizar|api\.whatsapp)[^>]*>([\s\S]*?)<\/a>/i,
-  ) || html.match(
-    /<a\b[^>]*style="[^"]*background:#25D366[^"]*"[^>]*>([\s\S]*?)<\/a>/i,
-  );
+  const ctaMatch =
+    html.match(
+      /<a\b[^>]*(?:whatsapp|cotizar|api\.whatsapp)[^>]*>([\s\S]*?)<\/a>/i,
+    ) ||
+    html.match(
+      /<a\b[^>]*style="[^"]*background:#25D366[^"]*"[^>]*>([\s\S]*?)<\/a>/i,
+    );
   const ctaTexto = plainDeHtml(ctaMatch?.[1] || "");
 
-  // Bloque urgencia: párrafo con MAILING o % de descuento en fondo navy/cream
   let urgencia = "";
-  const urg = html.match(
-    /<p\b[^>]*>([\s\S]*?(?:MAILING\d{1,3}|%\s*de descuento)[\s\S]*?)<\/p>/i,
-  );
-  if (urg?.[1] && !/\{\{\s*contact\.FIRSTNAME/i.test(urg[1])) {
-    urgencia = plainDeHtml(urg[1]);
+  for (const m of html.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+    const inner = m[1] || "";
+    if (/\{\{\s*contact\.FIRSTNAME/i.test(inner)) continue;
+    if (/MAILING\d{1,3}|%\s*de descuento/i.test(inner)) {
+      urgencia = plainDeHtml(inner);
+      break;
+    }
   }
 
   return { titular, subtitulo, saludoInner, codigo, ctaTexto, urgencia };
+}
+
+function reemplazarEnParrafoCon(
+  html: string,
+  pred: (inner: string) => boolean,
+  nuevoInner: string,
+): string {
+  const re = /<p\b[^>]*>[\s\S]*?<\/p>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const full = m[0];
+    const inner = full.replace(/^<p\b[^>]*>/i, "").replace(/<\/p>$/i, "");
+    if (!pred(inner)) continue;
+    const open = full.match(/^<p\b[^>]*>/i)?.[0] || "<p>";
+    return (
+      html.slice(0, m.index) +
+      open +
+      nuevoInner +
+      "</p>" +
+      html.slice(m.index + full.length)
+    );
+  }
+  return html;
 }
 
 function reemplazarH1(html: string, nuevoPlain: string): string {
@@ -169,33 +199,31 @@ function reemplazarH1(html: string, nuevoPlain: string): string {
 
 function reemplazarSubtitulo(html: string, nuevoPlain: string): string {
   const safe = escaparHtmlTexto(nuevoPlain.trim());
+  // Solo el <p> inmediatamente después del </h1>
   const re =
-    /(<h1\b[^>]*>[\s\S]*?<\/h1>\s*<p\b[^>]*>)([\s\S]*?)(<\/p>)/i;
-  if (re.test(html)) {
-    return html.replace(re, `$1${safe.replace(/\$/g, "$$$$")}$3`);
-  }
-  return html;
+    /(<h1\b[^>]*>[\s\S]*?<\/h1>\s*)(<p\b[^>]*>)([\s\S]*?)(<\/p>)/i;
+  if (!re.test(html)) return html;
+  return html.replace(re, `$1$2${safe.replace(/\$/g, "$$$$")}$4`);
 }
 
 function reemplazarSaludo(html: string, nuevoSaludo: string): string {
   let cuerpo = nuevoSaludo.trim();
   if (!cuerpo) return html;
-  // Asegurar FIRSTNAME
   if (!/\{\{\s*contact\.FIRSTNAME\s*\}\}/i.test(cuerpo)) {
     cuerpo = `Hola {{ contact.FIRSTNAME }},<br/><br/>${cuerpo}`;
   } else if (!/<br\s*\/?>/i.test(cuerpo) && !cuerpo.includes("\n")) {
-    // Si viene en una línea "Hola {{…}}, resto" → separar un poco
     cuerpo = cuerpo.replace(
       /(\{\{\s*contact\.FIRSTNAME\s*\}\}\s*,?)\s*/i,
       "$1<br/><br/>",
     );
   }
   cuerpo = cuerpo.replace(/\n/g, "<br/>");
-  const safe = escaparConservandoBrevo(cuerpo).replace(/\$/g, "$$$$");
-  const re =
-    /(<p\b[^>]*>)([\s\S]*?\{\{\s*contact\.FIRSTNAME\s*\}\}[\s\S]*?)(<\/p>)/i;
-  if (!re.test(html)) return html;
-  return html.replace(re, `$1${safe}$3`);
+  const safe = escaparConservandoBrevo(cuerpo);
+  return reemplazarEnParrafoCon(
+    html,
+    (inner) => /\{\{\s*contact\.FIRSTNAME\s*\}\}/i.test(inner),
+    safe,
+  );
 }
 
 function reemplazarCodigo(html: string, nuevoCodigo: string): string {
@@ -205,7 +233,6 @@ function reemplazarCodigo(html: string, nuevoCodigo: string): string {
   if (!actual || actual.toUpperCase() === cod) return html;
   let out = html.split(actual).join(cod);
   out = out.split(actual.toUpperCase()).join(cod);
-  // Ajuste % si el número del código sugiere el %
   const n = Number(cod.replace(/\D/g, ""));
   if (n > 0 && n <= 50) {
     out = out.replace(/(\d{1,2})%\s*de descuento/gi, `${n}% de descuento`);
@@ -230,13 +257,13 @@ function reemplazarCtaTexto(html: string, nuevo: string): string {
 
 function reemplazarUrgencia(html: string, nuevo: string): string {
   const safe = escaparHtmlTexto(nuevo.trim());
-  const re =
-    /(<p\b[^>]*>)([\s\S]*?(?:MAILING\d{1,3}|%\s*de descuento)[\s\S]*?)(<\/p>)/i;
-  if (!re.test(html)) return html;
-  // No tocar el saludo
-  const m = html.match(re);
-  if (m && /\{\{\s*contact\.FIRSTNAME/i.test(m[2] || "")) return html;
-  return html.replace(re, `$1${safe.replace(/\$/g, "$$$$")}$3`);
+  return reemplazarEnParrafoCon(
+    html,
+    (inner) =>
+      /MAILING\d{1,3}|%\s*de descuento/i.test(inner) &&
+      !/\{\{\s*contact\.FIRSTNAME/i.test(inner),
+    safe,
+  );
 }
 
 function aplicarCampos(

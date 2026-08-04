@@ -56,6 +56,18 @@ async function main() {
   assert(t2.htmlContent.includes("{{ contact.FIRSTNAME }}"), "FIRSTNAME perdido");
   assert(!t2.htmlContent.includes("&lt;br"), "br no debe escaparse");
   assert(/<br\s*\/?>/i.test(t2.htmlContent), "saludo debe usar <br/> real");
+  // El subtítulo dorado NO debe haberse convertido en saludo
+  assert(
+    t2.htmlContent.includes("Expertos en eventos frente al mar"),
+    "el subtítulo no debe borrarse al cambiar el saludo",
+  );
+  const subSolo = [...t2.htmlContent.matchAll(/<p\b[^>]*>[\s\S]*?<\/p>/gi)].find(
+    (m) => /#C9A84C/i.test(m[0]),
+  )?.[0];
+  assert(
+    !!subSolo && !/FIRSTNAME/i.test(subSolo),
+    "FIRSTNAME no debe meterse en el subtítulo dorado",
+  );
   console.log("OK saludo", t2.cambiosAplicados);
 
   const t3 = await ajustarEmail({
