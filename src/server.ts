@@ -14,6 +14,7 @@ import {
   generarImagenEmail,
   rutaMediaSegura,
 } from "./gemini/generar-imagen.js";
+import { conectarAgentesSolicitados } from "./gemini/conectar.js";
 import { probeModelosGemini } from "./gemini/probe.js";
 import { KommoClient } from "./kommo/cliente.js";
 import { sincronizarContactoKommo } from "./kommo/sincronizar.js";
@@ -149,7 +150,7 @@ const servidor = http.createServer((req, res) => {
           servicio: "Community Manager Mailling",
           provider: "brevo",
           modelos: {
-            texto: process.env.GEMINI_MODEL ?? "gemini-flash-latest",
+            texto: process.env.GEMINI_MODEL ?? "gemini-2.0-flash",
             imagenPredict: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
             imagen:
               process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image",
@@ -208,6 +209,16 @@ const servidor = http.createServer((req, res) => {
             (m) => m.name.includes("2.0-flash") || m.name.includes("imagen"),
           ),
         });
+        return;
+      }
+
+      /**
+       * Conexión ligera a Flash 2.0 + Imagen 3 (GET model metadata).
+       * No genera copy ni imágenes.
+       */
+      if (method === "GET" && path === "/gemini/conectar") {
+        const conexion = await conectarAgentesSolicitados();
+        enviarJson(res, conexion.listos ? 200 : 503, conexion);
         return;
       }
 

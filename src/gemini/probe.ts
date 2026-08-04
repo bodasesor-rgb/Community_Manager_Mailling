@@ -108,7 +108,7 @@ async function probeImagenPredict(
  * es gemini-flash-latest (2.0 ya no acepta generateContent en cuentas nuevas).
  */
 export function candidatosTexto(): string[] {
-  const preferido = process.env.GEMINI_MODEL?.trim() || "gemini-flash-latest";
+  const preferido = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
   return [
     ...new Set([
       preferido,

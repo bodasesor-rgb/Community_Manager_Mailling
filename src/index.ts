@@ -53,3 +53,8 @@ export {
   type GenerarImagenInput,
   type ImagenGenerada,
 } from "./gemini/generar-imagen.js";
+
+export {
+  conectarAgentesSolicitados,
+  type ConexionModelo,
+} from "./gemini/conectar.js";
