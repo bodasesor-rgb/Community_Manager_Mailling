@@ -56,6 +56,7 @@ import { generarIdeasTemas } from "./gemini/generar-ideas.js";
 import { componerEmail } from "./servicios/componer-email.js";
 import {
   actualizarConocimientoParcial,
+  enlaceWhatsAppCotizar,
   leerConocimiento,
   type EnlaceSocial,
 } from "./sitio/conocimiento.js";
@@ -462,15 +463,27 @@ const servidor = http.createServer((req, res) => {
           redes?: EnlaceSocial;
           notas?: string;
         };
+        const redesNorm = body.redes
+          ? {
+              ...body.redes,
+              whatsapp: enlaceWhatsAppCotizar(
+                body.redes.whatsapp || body.cotizarUrl,
+              ),
+            }
+          : undefined;
         const actualizado = await actualizarConocimientoParcial({
           ...(body.resumen !== undefined ? { resumen: body.resumen } : {}),
-          ...(body.cotizarUrl !== undefined
-            ? { cotizarUrl: body.cotizarUrl }
+          ...(body.cotizarUrl !== undefined || redesNorm?.whatsapp
+            ? {
+                cotizarUrl: enlaceWhatsAppCotizar(
+                  body.cotizarUrl || redesNorm?.whatsapp,
+                ),
+              }
             : {}),
           ...(body.blogUrl !== undefined ? { blogUrl: body.blogUrl } : {}),
           ...(body.baseUrl !== undefined ? { baseUrl: body.baseUrl } : {}),
           ...(body.notas !== undefined ? { notas: body.notas } : {}),
-          ...(body.redes !== undefined ? { redes: body.redes } : {}),
+          ...(redesNorm !== undefined ? { redes: redesNorm } : {}),
         });
         enviarJson(res, 200, actualizado);
         return;

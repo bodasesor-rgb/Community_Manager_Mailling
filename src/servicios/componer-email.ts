@@ -14,6 +14,7 @@ import {
 } from "../panel/media-store.js";
 import {
   conocimientoParaPrompt,
+  enlaceWhatsAppCotizar,
   leerConocimiento,
   sugerirArticuloBlog,
   sugerirProductosParaBrief,
@@ -136,9 +137,10 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
   let reutilizadas = 0;
   let generadas = 0;
 
-  // Enlaces reales del sitio
-  const ctaUrl =
-    sitio.redes.whatsapp || sitio.cotizarUrl || `${sitio.baseUrl}/`;
+  // Enlaces reales del sitio (WhatsApp con mensaje desde el correo)
+  const ctaUrl = enlaceWhatsAppCotizar(
+    sitio.redes.whatsapp || sitio.cotizarUrl,
+  );
   const sugeridos = sugerirProductosParaBrief(sitio, briefAmpliado, 3);
   const blogSug = sugerirArticuloBlog(sitio, briefAmpliado);
 
@@ -243,7 +245,7 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
     productos,
     facebookUrl: sitio.redes.facebook ?? "[[ENLACE_FACEBOOK]]",
     instagramUrl: sitio.redes.instagram ?? "[[ENLACE_INSTAGRAM]]",
-    whatsappUrl: sitio.redes.whatsapp ?? "[[ENLACE_WHATSAPP]]",
+    whatsappUrl: ctaUrl,
     ...(logoRes.item ? { logoUrl: logoRes.item.urlPublica } : {}),
     ...(heroItem ? { heroFoto: heroItem.urlPublica } : {}),
   });

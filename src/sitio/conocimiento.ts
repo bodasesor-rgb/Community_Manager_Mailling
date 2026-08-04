@@ -7,6 +7,38 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+/** Mensaje prellenado del botón WhatsApp en los correos. */
+export const WHATSAPP_MENSAJE_CORREO =
+  "hola, vi tu correo y me gustaría cotizar un evento";
+
+export const WHATSAPP_TELEFONO_DEFAULT = "5215540080373";
+
+/** URL de WhatsApp con el mensaje de cotización desde el correo. */
+export function enlaceWhatsAppCotizar(
+  telefonoOUrl?: string,
+  mensaje: string = WHATSAPP_MENSAJE_CORREO,
+): string {
+  const text = encodeURIComponent(mensaje);
+  let phone = WHATSAPP_TELEFONO_DEFAULT;
+  const raw = (telefonoOUrl ?? "").trim();
+  if (raw) {
+    try {
+      if (raw.startsWith("http")) {
+        const u = new URL(raw.replace(/&amp;/g, "&"));
+        const p = u.searchParams.get("phone") || u.pathname.replace(/^\//, "");
+        if (p && /\d{8,}/.test(p)) {
+          phone = p.replace(/\D/g, "");
+        }
+      } else if (/\d{8,}/.test(raw)) {
+        phone = raw.replace(/\D/g, "");
+      }
+    } catch {
+      // conservar default
+    }
+  }
+  return `https://api.whatsapp.com/send?phone=${phone}&text=${text}`;
+}
+
 export interface EnlaceSocial {
   facebook?: string;
   instagram?: string;
@@ -350,10 +382,9 @@ export async function sincronizarDesdeSitemap(
     }
   }
 
-  const whatsapp =
-    desdeLlms?.whatsapp ||
-    actual.redes.whatsapp ||
-    "https://api.whatsapp.com/send?phone=5215540080373&text=Hola%2C%20me%20gustar%C3%ADa%20cotizar%20un%20evento";
+  const whatsapp = enlaceWhatsAppCotizar(
+    desdeLlms?.whatsapp || actual.redes.whatsapp,
+  );
 
   return guardarConocimiento({
     ...actual,

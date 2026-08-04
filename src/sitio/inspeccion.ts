@@ -4,6 +4,7 @@
  */
 
 import {
+  enlaceWhatsAppCotizar,
   guardarConocimiento,
   leerConocimiento,
   type ArticuloBlog,
@@ -287,14 +288,11 @@ async function correrInspeccion(): Promise<void> {
       ...actual,
       baseUrl: base,
       resumen,
-      cotizarUrl:
-        whatsapp ||
-        actual.cotizarUrl ||
-        "https://api.whatsapp.com/send?phone=5215540080373&text=Hola%2C%20me%20gustar%C3%ADa%20cotizar%20un%20evento",
+      cotizarUrl: enlaceWhatsAppCotizar(whatsapp || actual.cotizarUrl),
       blogUrl: `${base}/blog`,
       redes: {
         ...actual.redes,
-        ...(whatsapp ? { whatsapp } : {}),
+        whatsapp: enlaceWhatsAppCotizar(whatsapp || actual.redes.whatsapp),
       },
       productos,
       articulosBlog: blogs,
