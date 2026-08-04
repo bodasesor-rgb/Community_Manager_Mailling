@@ -41,10 +41,18 @@ import {
 } from "./panel/borradores-store.js";
 import {
   paginaContactosHtml,
+  paginaCrearHtml,
   paginaInicioHtml,
   paginaPlantillasHtml,
 } from "./panel/html.js";
 import { BUILD_ISO, BUILD_LABEL } from "./build-info.js";
+import {
+  listarMedia,
+  subirMediaBase64,
+  type TipoMedia,
+} from "./panel/media-store.js";
+import { generarIdeasTemas } from "./gemini/generar-ideas.js";
+import { componerEmail } from "./servicios/componer-email.js";
 
 const puerto = Number(process.env.PORT ?? 3000);
 const provider: EmailProvider = new BrevoProvider();
@@ -244,6 +252,10 @@ const servidor = http.createServer((req, res) => {
         enviarHtml(res, paginaPlantillasHtml());
         return;
       }
+      if (method === "GET" && path === "/panel/crear") {
+        enviarHtml(res, paginaCrearHtml());
+        return;
+      }
 
       if (method === "GET" && path === "/health") {
         enviarJson(res, 200, {
@@ -305,6 +317,113 @@ const servidor = http.createServer((req, res) => {
       if (method === "GET" && path === "/api/borradores") {
         const borradores = await listarBorradores();
         enviarJson(res, 200, { total: borradores.length, borradores });
+        return;
+      }
+
+      if (method === "GET" && path === "/api/media") {
+        const url = new URL(req.url ?? "/", "http://localhost");
+        const tipo = url.searchParams.get("tipo") as TipoMedia | null;
+        const items = await listarMedia(
+          tipo ? { tipo } : undefined,
+        );
+        // Asegurar URLs absolutas para el panel / preview srcdoc
+        const base = baseUrlDesdeRequest(req);
+        enviarJson(res, 200, {
+          total: items.length,
+          items: items.map((i) => ({
+            ...i,
+            urlPublica: i.urlPublica.startsWith("http")
+              ? i.urlPublica
+              : `${base}/media/${i.archivo}`,
+          })),
+        });
+        return;
+      }
+
+      if (method === "POST" && path === "/api/media/upload") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          dataBase64?: string;
+          mimeType?: string;
+          tipo?: TipoMedia;
+          destino?: string;
+          etiquetas?: string[];
+          prompt?: string;
+        };
+        if (!body.dataBase64 || !body.tipo) {
+          enviarJson(res, 400, { error: "dataBase64 y tipo son requeridos" });
+          return;
+        }
+        const tiposOk: TipoMedia[] = ["logo", "hero", "producto", "otro"];
+        if (!tiposOk.includes(body.tipo)) {
+          enviarJson(res, 400, { error: "tipo inválido" });
+          return;
+        }
+        try {
+          const item = await subirMediaBase64({
+            dataBase64: body.dataBase64,
+            mimeType: body.mimeType ?? "image/png",
+            tipo: body.tipo,
+            baseUrl: baseUrlDesdeRequest(req),
+            ...(body.destino !== undefined ? { destino: body.destino } : {}),
+            ...(body.etiquetas !== undefined ? { etiquetas: body.etiquetas } : {}),
+            ...(body.prompt !== undefined ? { prompt: body.prompt } : {}),
+          });
+          enviarJson(res, 201, { item });
+        } catch (error: unknown) {
+          enviarJson(res, 400, {
+            error: error instanceof Error ? error.message : "upload falló",
+          });
+        }
+        return;
+      }
+
+      if (method === "POST" && path === "/api/ideas-temas") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as { brief?: string };
+        if (!body.brief?.trim()) {
+          enviarJson(res, 400, { error: "brief es requerido" });
+          return;
+        }
+        const resultado = await generarIdeasTemas(body.brief);
+        enviarJson(res, 200, resultado);
+        return;
+      }
+
+      if (method === "POST" && path === "/api/composer/generar") {
+        if (!requiereAuth(req, res)) return;
+        const body = (await leerJson(req)) as {
+          brief?: string;
+          ideaTitulo?: string;
+          destino?: string;
+          logoId?: string;
+          generarImagenes?: boolean;
+          marca?: string;
+        };
+        if (!body.brief?.trim()) {
+          enviarJson(res, 400, { error: "brief es requerido" });
+          return;
+        }
+        try {
+          const resultado = await componerEmail({
+            brief: body.brief,
+            baseUrl: baseUrlDesdeRequest(req),
+            ...(body.ideaTitulo !== undefined
+              ? { ideaTitulo: body.ideaTitulo }
+              : {}),
+            ...(body.destino !== undefined ? { destino: body.destino } : {}),
+            ...(body.logoId !== undefined ? { logoId: body.logoId } : {}),
+            ...(body.generarImagenes !== undefined
+              ? { generarImagenes: body.generarImagenes }
+              : {}),
+            ...(body.marca !== undefined ? { marca: body.marca } : {}),
+          });
+          enviarJson(res, 200, resultado);
+        } catch (error: unknown) {
+          enviarJson(res, 502, {
+            error: error instanceof Error ? error.message : "composer falló",
+          });
+        }
         return;
       }
 

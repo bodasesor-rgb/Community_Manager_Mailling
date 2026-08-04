@@ -1,12 +1,14 @@
 /**
  * Generación de imágenes para emails.
- * Solo IMAGEN_MODEL (predict). Fallback LLM solo si GEMINI_IMAGE_FALLBACK=1.
+ * 1) IMAGEN_MODEL (predict)
+ * 2) Si falla, un solo fallback: GEMINI_IMAGE_MODEL (generateContent + IMAGE)
+ *    — necesario cuando Imagen 3 no existe en la API key.
  */
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { candidatosImagenLlm, candidatosImagenPredict } from "./probe.js";
+import { candidatosImagenPredict } from "./probe.js";
 
 export interface GenerarImagenInput {
   prompt: string;
@@ -97,7 +99,7 @@ async function viaPredict(
   });
   const data = (await response.json()) as ImagenPredictResponse;
   if (!response.ok) {
-    if (response.status === 404) {
+    if (response.status === 404 || response.status === 400) {
       return null;
     }
     throw new Error(
@@ -163,6 +165,11 @@ async function viaGenerateContentImage(
   );
 }
 
+/** Un solo modelo LLM de imagen (no cascada). */
+function modeloImagenLlm(): string {
+  return process.env.GEMINI_IMAGE_MODEL?.trim() || "gemini-2.5-flash-image";
+}
+
 export async function generarImagenEmail(
   input: GenerarImagenInput,
 ): Promise<ImagenGenerada> {
@@ -179,22 +186,21 @@ export async function generarImagenEmail(
       if (img) {
         return img;
       }
-      errores.push(`${modelo}: predict sin imagen`);
+      errores.push(`${modelo}: predict no disponible`);
     } catch (error: unknown) {
       errores.push(error instanceof Error ? error.message : String(error));
     }
   }
 
-  for (const modelo of candidatosImagenLlm()) {
-    try {
-      const img = await viaGenerateContentImage(apiKey, modelo, input);
-      if (img) {
-        return img;
-      }
-      errores.push(`${modelo}: generateContent sin imagen`);
-    } catch (error: unknown) {
-      errores.push(error instanceof Error ? error.message : String(error));
+  const llm = modeloImagenLlm();
+  try {
+    const img = await viaGenerateContentImage(apiKey, llm, input);
+    if (img) {
+      return img;
     }
+    errores.push(`${llm}: generateContent sin imagen`);
+  } catch (error: unknown) {
+    errores.push(error instanceof Error ? error.message : String(error));
   }
 
   throw new Error(

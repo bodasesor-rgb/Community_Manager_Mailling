@@ -5,7 +5,9 @@
 
 import { BUILD_ISO, BUILD_LABEL } from "../build-info.js";
 
-function layout(titulo: string, activo: "inicio" | "contactos" | "plantillas", cuerpo: string): string {
+type PaginaActiva = "inicio" | "crear" | "contactos" | "plantillas";
+
+function layout(titulo: string, activo: PaginaActiva, cuerpo: string): string {
   return `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -72,6 +74,18 @@ function layout(titulo: string, activo: "inicio" | "contactos" | "plantillas", c
     .err{background:#f8ecec;border:1px solid #e5c7c7;color:var(--danger);padding:10px 12px;border-radius:10px}
     .ok{background:var(--ok-bg);border:1px solid var(--ok-line);padding:10px 12px;border-radius:10px;color:var(--brand)}
     .muted{color:var(--muted)}
+    .ideas{display:grid;gap:10px;margin:12px 0}
+    .idea{border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;background:#fff;text-align:left}
+    .idea:hover,.idea.sel{border-color:var(--brand);background:var(--ok-bg)}
+    .idea strong{display:block;color:var(--brand);margin-bottom:4px}
+    .logo-box{border:1px dashed var(--line);border-radius:12px;padding:16px;background:#fafbfd;display:grid;gap:10px;justify-items:start}
+    .logo-box img{max-height:72px;max-width:220px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px}
+    .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:8px}
+    .gallery figure{margin:0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;cursor:pointer}
+    .gallery figure.sel{outline:2px solid var(--brand)}
+    .gallery img{display:block;width:100%;height:80px;object-fit:cover}
+    .gallery figcaption{font-size:.7rem;padding:6px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .chip{display:inline-block;font-size:.75rem;padding:2px 8px;border-radius:999px;background:var(--stat);color:var(--brand);margin-left:6px}
   </style>
 </head>
 <body>
@@ -84,6 +98,7 @@ function layout(titulo: string, activo: "inicio" | "contactos" | "plantillas", c
       <div class="topbar-right">
         <nav>
           <a href="/panel" class="${activo === "inicio" ? "activo" : ""}">Inicio</a>
+          <a href="/panel/crear" class="${activo === "crear" ? "activo" : ""}">Crear mail</a>
           <a href="/panel/contactos" class="${activo === "contactos" ? "activo" : ""}">Contactos</a>
           <a href="/panel/plantillas" class="${activo === "plantillas" ? "activo" : ""}">Plantillas</a>
         </nav>
@@ -107,10 +122,11 @@ export function paginaInicioHtml(): string {
     "inicio",
     `<section class="card">
       <h2>Bienvenido</h2>
-      <p class="lead">Desde aquí sincronizas contactos Kommo→Brevo y creas plantillas con previsualización antes de aprobarlas.</p>
+      <p class="lead">Desde aquí escribes el brief del mail, pides ideas de tema a la IA, subes logo y reutilizas imágenes guardadas.</p>
       <div class="row">
-        <a href="/panel/contactos"><button type="button">Ir a Contactos</button></a>
-        <a href="/panel/plantillas"><button type="button" class="sec">Ir a Plantillas</button></a>
+        <a href="/panel/crear"><button type="button">Crear mail</button></a>
+        <a href="/panel/contactos"><button type="button" class="sec">Contactos</button></a>
+        <a href="/panel/plantillas"><button type="button" class="sec">Plantillas</button></a>
       </div>
       <p class="muted">API JSON sigue en <code>/health</code>. Este panel es la interfaz visual.</p>
     </section>`,
@@ -323,6 +339,214 @@ export function paginaPlantillasHtml(): string {
           estadoEl.textContent = 'estado: aprobado';
           setMsg(true, 'Aprobado: plantilla #' + data.plantillaId + ', campaña borrador #' + data.campanaId + '. No se envió.');
           cargarLista();
+        } catch (err) { setMsg(false, err.message || String(err)); }
+      };
+    </script>`,
+  );
+}
+
+export function paginaCrearHtml(): string {
+  return layout(
+    "Crear mail",
+    "crear",
+    `<section class="card">
+      <h2>Crear mail</h2>
+      <p class="lead">Escribe qué quieres comunicar. La IA sugiere temas; las imágenes se reutilizan de la biblioteca si encajan, o se generan y se guardan.</p>
+      <div id="msg"></div>
+      <div class="grid">
+        <div>
+          <label>¿Qué debe decir / incluir el mail?
+            <textarea id="brief" style="font-family:inherit;min-height:140px" placeholder="Ej. Newsletter de bodas en Cancún para junio, tono elegante, CTA a cotizar, mencionar cena en la playa…"></textarea>
+          </label>
+          <div class="row">
+            <button type="button" class="sec" id="btn-ideas">Ideas de temas (IA)</button>
+            <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0">
+              <input type="checkbox" id="genImg" checked/>
+              Generar imágenes nuevas si no hay compatibles
+            </label>
+          </div>
+          <div id="ideas" class="ideas"></div>
+          <label>Destino / tema<input id="destino" placeholder="Cancún, Posadas, CDMX…"/></label>
+          <div class="logo-box">
+            <strong>Logo del mail</strong>
+            <span class="muted">Sube el logo que quieres usar. Se guarda para próximos correos.</span>
+            <input type="file" id="logoFile" accept="image/png,image/jpeg,image/svg+xml,image/webp"/>
+            <img id="logoPreview" alt="Logo" style="display:none"/>
+            <input type="hidden" id="logoId"/>
+            <div class="row" style="margin:0">
+              <button type="button" class="sec" id="btn-logo-lib">Elegir logo guardado</button>
+            </div>
+          </div>
+          <div class="row">
+            <button type="button" id="btn-generar">Generar borrador</button>
+            <button type="button" class="sec" id="btn-guardar" disabled>Guardar borrador</button>
+            <span id="metaImg" class="muted"></span>
+          </div>
+          <label>Asunto<input id="asunto" readonly/></label>
+          <label>Nombre interno<input id="nombre"/></label>
+          <h3 style="font-family:Fraunces,Georgia,serif">Biblioteca de imágenes</h3>
+          <div id="gallery" class="gallery"></div>
+        </div>
+        <div>
+          <h3 style="font-family:Fraunces,Georgia,serif;margin-top:0">Pre-visualización</h3>
+          <iframe id="preview" title="Vista previa"></iframe>
+        </div>
+      </div>
+      <textarea id="htmlContent" style="display:none"></textarea>
+    </section>
+    <script>
+      let ideaSel = null;
+      let ultimoHtml = '';
+      const msg = document.getElementById('msg');
+      const preview = document.getElementById('preview');
+      function setMsg(ok, text){ msg.innerHTML = '<div class="' + (ok?'ok':'err') + '">' + escapeHtml(text) + '</div>'; }
+      function escapeHtml(s){return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+      async function cargarGaleria(){
+        const res = await fetch('/api/media');
+        const data = await res.json();
+        const items = data.items || [];
+        const gal = document.getElementById('gallery');
+        if (!items.length) { gal.innerHTML = '<p class="muted">Aún no hay imágenes guardadas.</p>'; return; }
+        gal.innerHTML = items.map(i =>
+          '<figure data-id="'+i.id+'" data-tipo="'+i.tipo+'" title="'+escapeHtml((i.destino||'')+' '+(i.prompt||i.tipo))+'">' +
+          '<img src="'+escapeHtml(i.urlPublica)+'" alt=""/>' +
+          '<figcaption>'+escapeHtml(i.tipo)+(i.destino?' · '+escapeHtml(i.destino):'')+'</figcaption></figure>'
+        ).join('');
+        gal.querySelectorAll('figure').forEach(fig => {
+          fig.onclick = () => {
+            if (fig.getAttribute('data-tipo') === 'logo') {
+              document.getElementById('logoId').value = fig.getAttribute('data-id');
+              const img = document.getElementById('logoPreview');
+              img.src = fig.querySelector('img').src;
+              img.style.display = 'block';
+              setMsg(true, 'Logo de la biblioteca seleccionado.');
+            }
+          };
+        });
+      }
+      cargarGaleria();
+
+      document.getElementById('btn-ideas').onclick = async () => {
+        const brief = document.getElementById('brief').value.trim();
+        if (!brief) { setMsg(false, 'Escribe primero qué quieres en el mail.'); return; }
+        const btn = document.getElementById('btn-ideas');
+        btn.disabled = true; btn.textContent = 'Pensando ideas…';
+        try {
+          const res = await fetch('/api/ideas-temas', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({ brief })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'No se pudieron generar ideas');
+          const box = document.getElementById('ideas');
+          box.innerHTML = data.ideas.map((idea, idx) =>
+            '<button type="button" class="idea" data-idx="'+idx+'"><strong>'+escapeHtml(idea.titulo)+'</strong>' +
+            '<span class="chip">'+escapeHtml(idea.destino)+'</span> · '+escapeHtml(idea.tono) +
+            '<div class="muted" style="margin-top:6px">'+escapeHtml(idea.resumen)+'</div></button>'
+          ).join('');
+          const ideas = data.ideas;
+          box.querySelectorAll('.idea').forEach(el => {
+            el.onclick = () => {
+              box.querySelectorAll('.idea').forEach(x => x.classList.remove('sel'));
+              el.classList.add('sel');
+              const i = ideas[Number(el.getAttribute('data-idx'))];
+              ideaSel = i;
+              document.getElementById('destino').value = i.destino;
+              setMsg(true, 'Tema elegido: ' + i.titulo);
+            };
+          });
+          setMsg(true, '4 ideas listas. Elige una o sigue con tu brief.');
+        } catch (err) { setMsg(false, err.message || String(err)); }
+        finally { btn.disabled = false; btn.textContent = 'Ideas de temas (IA)'; }
+      };
+
+      document.getElementById('logoFile').onchange = async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        try {
+          const dataUrl = await new Promise((resolve, reject) => {
+            const r = new FileReader();
+            r.onload = () => resolve(r.result);
+            r.onerror = reject;
+            r.readAsDataURL(file);
+          });
+          const res = await fetch('/api/media/upload', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify({
+              dataBase64: dataUrl,
+              mimeType: file.type || 'image/png',
+              tipo: 'logo',
+              etiquetas: ['logo','bodasesor'],
+              prompt: file.name
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'No se pudo subir el logo');
+          document.getElementById('logoId').value = data.item.id;
+          const img = document.getElementById('logoPreview');
+          img.src = data.item.urlPublica;
+          img.style.display = 'block';
+          setMsg(true, 'Logo guardado en la biblioteca.');
+          cargarGaleria();
+        } catch (err) { setMsg(false, err.message || String(err)); }
+      };
+
+      document.getElementById('btn-logo-lib').onclick = () => {
+        setMsg(true, 'Haz clic en un logo de la biblioteca (abajo) para usarlo.');
+      };
+
+      document.getElementById('btn-generar').onclick = async () => {
+        const brief = document.getElementById('brief').value.trim();
+        if (!brief) { setMsg(false, 'Escribe el brief del mail.'); return; }
+        const btn = document.getElementById('btn-generar');
+        btn.disabled = true; btn.textContent = 'Generando…';
+        document.getElementById('btn-guardar').disabled = true;
+        try {
+          const body = {
+            brief,
+            destino: document.getElementById('destino').value.trim() || undefined,
+            logoId: document.getElementById('logoId').value || undefined,
+            generarImagenes: document.getElementById('genImg').checked,
+            ideaTitulo: ideaSel ? ideaSel.titulo : undefined
+          };
+          const res = await fetch('/api/composer/generar', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify(body)
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'No se pudo generar');
+          ultimoHtml = data.htmlContent;
+          document.getElementById('htmlContent').value = data.htmlContent;
+          document.getElementById('asunto').value = data.asunto || '';
+          document.getElementById('nombre').value = data.nombre || '';
+          preview.srcdoc = data.htmlContent;
+          document.getElementById('metaImg').textContent =
+            'Imágenes: ' + (data.imagenes?.reutilizadas||0) + ' reutilizadas, ' + (data.imagenes?.generadas||0) + ' nuevas';
+          document.getElementById('btn-guardar').disabled = false;
+          setMsg(true, data.advertencia
+            ? ('Borrador listo (con avisos): ' + data.advertencia)
+            : 'Borrador listo. Revisa la vista previa y guarda.');
+          cargarGaleria();
+        } catch (err) { setMsg(false, err.message || String(err)); }
+        finally { btn.disabled = false; btn.textContent = 'Generar borrador'; }
+      };
+
+      document.getElementById('btn-guardar').onclick = async () => {
+        try {
+          const body = {
+            nombre: document.getElementById('nombre').value || 'Newsletter',
+            asunto: document.getElementById('asunto').value,
+            htmlContent: document.getElementById('htmlContent').value || ultimoHtml,
+            remitente: { nombre: 'Bodasesor', email: 'hola@bodasesor.com' }
+          };
+          const res = await fetch('/api/borradores', {
+            method:'POST', headers:{'content-type':'application/json'},
+            body: JSON.stringify(body)
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'No se pudo guardar');
+          setMsg(true, 'Guardado. Ábrelo en Plantillas para aprobar en Brevo. id=' + data.id);
         } catch (err) { setMsg(false, err.message || String(err)); }
       };
     </script>`,
