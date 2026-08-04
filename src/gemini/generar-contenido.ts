@@ -55,33 +55,41 @@ export async function generarContenidoEmail(
   const idioma = input.idioma ?? "es";
   const quiereImagen = input.generarImagen !== false;
 
-  const prompt = `Eres copywriter de email marketing para la marca "${marca}".
-Idioma: ${idioma}. Tono: ${tono}.
-Brief del usuario:
+  const prompt = `Eres copywriter y diseñador de emails promocionales para "${marca}" (bodas y eventos en México/Latam).
+Idioma: ${idioma}. Tono: ${tono}, cálido y elegante (sin emojis).
+Brief del usuario (tema / destino de la semana):
 """
 ${input.brief}
 """
 
 Devuelve SOLO un JSON válido (sin markdown) con esta forma exacta:
 {
-  "asunto": "asunto corto del email",
+  "asunto": "asunto corto del email (máx 60 caracteres)",
   "marca": "${marca}",
-  "titular": "titular del email",
-  "apoyo": "una frase de apoyo",
-  "bloques": [
-    { "tipo": "texto", "titulo": "opcional", "cuerpo": "párrafo" },
-    { "tipo": "cta", "texto": "texto botón", "url": "https://bodasesor.com" }
+  "titular": "titular hero corto",
+  "apoyo": "subtítulo hero corto",
+  "destino": "ciudad o tema principal del brief",
+  "saludo": "2-3 frases. Debe incluir exactamente {{ contact.FIRSTNAME }} al inicio (ej. Hola {{ contact.FIRSTNAME }}, ...)",
+  "ctaTexto": "texto del botón (ej. Cotizar mi evento)",
+  "productos": [
+    { "titulo": "experiencia 1", "descripcion": "1-2 frases" },
+    { "titulo": "experiencia 2", "descripcion": "1-2 frases" },
+    { "titulo": "experiencia 3", "descripcion": "1-2 frases" }
   ],
-  "pie": "texto legal corto de baja/comunidad",
-  "imagePrompt": "English visual prompt for a tasteful email hero image related to the brief, no text in the image, wedding/community lifestyle aesthetic"
+  "testimonial": { "cita": "frase de cliente", "autor": "Nombre y Nombre" },
+  "blog": { "titulo": "título de artículo", "extracto": "1-2 frases" },
+  "urgencia": "frase corta de escasez de fechas / reserva",
+  "pie": "texto legal corto de comunidad",
+  "imagePrompt": "English visual prompt for a tasteful wedding/event hero photo related to the destination, no text in the image, editorial lifestyle aesthetic"
 }
 
 Reglas:
-- Máximo 3 bloques de texto y 1 CTA.
-- No inventes URLs inventadas de dominios raros; usa https://bodasesor.com si no hay URL en el brief.
+- Exactamente 3 productos.
+- No inventes URLs; el HTML usará placeholders [[ENLACE_COTIZAR]], [[ENLACE_BLOG]], etc.
 - Sin emojis.
-- Contenido útil y concreto para community management / bodas.
-- imagePrompt siempre en inglés, concreto y fotográfico.`;
+- Contenido concreto para bodas/eventos en el destino del brief.
+- imagePrompt siempre en inglés, concreto y fotográfico.
+- Mantén saludo con la variable Brevo {{ contact.FIRSTNAME }} literal.`;
 
   const body = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -130,6 +138,13 @@ Reglas:
         marca?: string;
         titular?: string;
         apoyo?: string;
+        destino?: string;
+        saludo?: string;
+        ctaTexto?: string;
+        productos?: Array<{ titulo?: string; descripcion?: string }>;
+        testimonial?: { cita?: string; autor?: string };
+        blog?: { titulo?: string; extracto?: string };
+        urgencia?: string;
         bloques?: GenerarPlantillaHtmlInput["bloques"];
         pie?: string;
         imagePrompt?: string;
@@ -139,7 +154,6 @@ Reglas:
         throw new Error("Gemini devolvió JSON incompleto (faltan asunto/titular)");
       }
 
-      const bloques = [...(parsed.bloques ?? [])];
       let imagen: ImagenGenerada | undefined;
       const imagePrompt = parsed.imagePrompt?.trim();
       const advertencias: string[] = [];
@@ -172,12 +186,52 @@ Reglas:
             `IMAGEN_MODEL=${pedidoImagen} no disponible; se usó ${imagen.modelo}.`,
           );
         }
-        bloques.unshift({
-          tipo: "imagen",
-          url: imagen.urlPublica,
-          alt: parsed.titular,
-        });
       }
+
+      const destino =
+        parsed.destino?.trim() ||
+        extraerDestinoDelBrief(input.brief) ||
+        "tu destino";
+
+      const productos = (parsed.productos ?? [])
+        .filter((p) => p.titulo && p.descripcion)
+        .slice(0, 3)
+        .map((p, i) => ({
+          titulo: p.titulo as string,
+          descripcion: p.descripcion as string,
+          foto: `[[FOTO_PRODUCTO_${i + 1}]]`,
+        }));
+
+      const promocional = {
+        destino,
+        heroTitulo: parsed.titular,
+        ...(parsed.apoyo !== undefined ? { heroSubtitulo: parsed.apoyo } : {}),
+        ...(parsed.saludo !== undefined ? { saludo: parsed.saludo } : {}),
+        ...(parsed.ctaTexto !== undefined ? { ctaTexto: parsed.ctaTexto } : {}),
+        ...(productos.length > 0 ? { productos } : {}),
+        ...(parsed.testimonial?.cita && parsed.testimonial.autor
+          ? {
+              testimonial: {
+                cita: parsed.testimonial.cita,
+                autor: parsed.testimonial.autor,
+              },
+            }
+          : {}),
+        ...(parsed.blog?.titulo && parsed.blog.extracto
+          ? {
+              blog: {
+                titulo: parsed.blog.titulo,
+                extracto: parsed.blog.extracto,
+                url: "[[ENLACE_BLOG]]",
+              },
+            }
+          : {}),
+        ...(parsed.urgencia !== undefined ? { urgencia: parsed.urgencia } : {}),
+        ...(parsed.pie !== undefined ? { pieLegal: parsed.pie } : {}),
+        ...(imagen
+          ? { heroFoto: imagen.urlPublica }
+          : { heroFoto: "[[FOTO_HERO]]" }),
+      };
 
       return {
         asunto: parsed.asunto,
@@ -191,8 +245,8 @@ Reglas:
           marca: parsed.marca ?? marca,
           titular: parsed.titular,
           ...(parsed.apoyo !== undefined ? { apoyo: parsed.apoyo } : {}),
-          bloques,
           ...(parsed.pie !== undefined ? { pie: parsed.pie } : {}),
+          promocional,
         },
       };
     }
@@ -238,4 +292,12 @@ function limpiarJson(texto: string): string {
       .trim();
   }
   return trimmed;
+}
+
+/** Heurística simple si Gemini no devolvió destino. */
+function extraerDestinoDelBrief(brief: string): string | undefined {
+  const m = brief.match(
+    /\b(Posadas|Canc[uú]n|Ciudad de M[eé]xico|CDMX|Guadalajara|Playa del Carmen|M[eé]rida|Puebla|Monterrey|Oaxaca|Tulum)\b/i,
+  );
+  return m?.[1];
 }

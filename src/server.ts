@@ -21,7 +21,10 @@ import { KommoClient } from "./kommo/cliente.js";
 import { sincronizarContactoKommo } from "./kommo/sincronizar.js";
 import {
   generarPlantillaHtml,
+  generarEmailPromocionalHtml,
+  TEMAS_EJEMPLO,
   type GenerarPlantillaHtmlInput,
+  type EmailPromocionalInput,
 } from "./plantillas/generador.js";
 import {
   crearEnvio,
@@ -603,9 +606,36 @@ const servidor = http.createServer((req, res) => {
 
       /** Vista previa determinista (sin Gemini ni Brevo). */
       if (method === "POST" && path === "/plantillas/vista-previa") {
-        const body = (await leerJson(req)) as Partial<GenerarPlantillaHtmlInput>;
+        const body = (await leerJson(req)) as Partial<GenerarPlantillaHtmlInput> & {
+          promocional?: EmailPromocionalInput;
+          tema?: string;
+        };
+        if (body.tema) {
+          const clave = body.tema.trim().toLowerCase();
+          const tema = TEMAS_EJEMPLO[clave];
+          if (!tema) {
+            enviarJson(res, 404, {
+              error: `Tema desconocido. Disponibles: ${Object.keys(TEMAS_EJEMPLO).join(", ")}`,
+            });
+            return;
+          }
+          const htmlContent = generarEmailPromocionalHtml(tema);
+          enviarJson(res, 200, {
+            htmlContent,
+            asunto: `Bodasesor · ${tema.destino}`,
+            tema: clave,
+          });
+          return;
+        }
+        if (body.promocional?.destino && body.promocional.heroTitulo) {
+          const htmlContent = generarEmailPromocionalHtml(body.promocional);
+          enviarJson(res, 200, { htmlContent });
+          return;
+        }
         if (!body.marca || !body.titular) {
-          enviarJson(res, 400, { error: "marca y titular son requeridos" });
+          enviarJson(res, 400, {
+            error: "marca y titular, o tema, o promocional son requeridos",
+          });
           return;
         }
         const htmlContent = generarPlantillaHtml({
@@ -617,8 +647,77 @@ const servidor = http.createServer((req, res) => {
           ...(body.colorAcento !== undefined
             ? { colorAcento: body.colorAcento }
             : {}),
+          ...(body.promocional !== undefined
+            ? { promocional: body.promocional }
+            : {}),
         });
         enviarJson(res, 200, { htmlContent });
+        return;
+      }
+
+      /** Lista temas promocionales de ejemplo (Posadas, Cancún, CDMX, GDL). */
+      if (method === "GET" && path === "/api/temas") {
+        enviarJson(res, 200, {
+          temas: Object.entries(TEMAS_EJEMPLO).map(([id, t]) => ({
+            id,
+            destino: t.destino,
+            heroTitulo: t.heroTitulo,
+          })),
+        });
+        return;
+      }
+
+      /** Genera HTML promocional desde tema de ejemplo o destino libre. */
+      if (method === "POST" && path === "/api/plantillas/tema") {
+        const body = (await leerJson(req)) as {
+          tema?: string;
+          destino?: string;
+          promocional?: EmailPromocionalInput;
+        };
+        if (body.promocional?.destino && body.promocional.heroTitulo) {
+          const htmlContent = generarEmailPromocionalHtml(body.promocional);
+          enviarJson(res, 200, {
+            htmlContent,
+            asunto: `Bodasesor · ${body.promocional.destino}`,
+            nombre: `Newsletter ${body.promocional.destino}`,
+          });
+          return;
+        }
+        if (body.tema) {
+          const clave = body.tema.trim().toLowerCase();
+          const tema = TEMAS_EJEMPLO[clave];
+          if (!tema) {
+            enviarJson(res, 404, {
+              error: `Tema desconocido. Disponibles: ${Object.keys(TEMAS_EJEMPLO).join(", ")}`,
+            });
+            return;
+          }
+          const htmlContent = generarEmailPromocionalHtml(tema);
+          enviarJson(res, 200, {
+            htmlContent,
+            asunto: `Bodasesor · ${tema.destino}`,
+            nombre: `Newsletter ${tema.destino}`,
+            tema: clave,
+          });
+          return;
+        }
+        if (body.destino?.trim()) {
+          const destino = body.destino.trim();
+          const htmlContent = generarEmailPromocionalHtml({
+            destino,
+            heroTitulo: `${destino} te espera para celebrar`,
+            heroSubtitulo: "Experiencias Bodasesor pensadas para tu evento",
+          });
+          enviarJson(res, 200, {
+            htmlContent,
+            asunto: `Bodasesor · ${destino}`,
+            nombre: `Newsletter ${destino}`,
+          });
+          return;
+        }
+        enviarJson(res, 400, {
+          error: "Indica tema, destino o promocional completo",
+        });
         return;
       }
 

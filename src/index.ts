@@ -19,8 +19,12 @@ export {
 
 export {
   generarPlantillaHtml,
+  generarEmailPromocionalHtml,
+  TEMAS_EJEMPLO,
+  COLORES_BODASESOR,
   escaparHtml,
   type GenerarPlantillaHtmlInput,
+  type EmailPromocionalInput,
   type BloqueContenido,
   type BloqueTexto,
   type BloqueImagen,

@@ -6,6 +6,8 @@
 
 import {
   generarPlantillaHtml,
+  generarEmailPromocionalHtml,
+  TEMAS_EJEMPLO,
 } from "../src/plantillas/generador.js";
 import { BrevoProvider } from "../src/email-provider.js";
 import { crearEnvio } from "../src/servicios/crear-envio.js";
@@ -32,7 +34,20 @@ async function main(): Promise<void> {
   if (!html.includes("Bodasesor") || !html.includes("Ver guía")) {
     throw new Error("El HTML generado no contiene marca/CTA esperados");
   }
-  console.log(`OK generador: ${html.length} chars`);
+  if (!html.includes("#1a2744") || !html.includes("{{ unsubscribe }}")) {
+    throw new Error("El HTML simple no aplica paleta / unsubscribe Brevo");
+  }
+  console.log(`OK generador simple: ${html.length} chars`);
+
+  const promo = generarEmailPromocionalHtml(TEMAS_EJEMPLO.posadas!);
+  if (
+    !promo.includes("[[FOTO_HERO]]") ||
+    !promo.includes("{{ contact.FIRSTNAME }}") ||
+    !promo.includes("#C9A84C")
+  ) {
+    throw new Error("Email promocional incompleto");
+  }
+  console.log(`OK generador promocional Posadas: ${promo.length} chars`);
 
   const apiKey = process.env.BREVO_API_KEY;
   const email =

@@ -14,6 +14,7 @@
     "probar-brevo": "tsx scripts/probar-brevo.ts",
     "probar-supresion": "tsx scripts/probar-supresion.ts",
     "probar-envio": "tsx scripts/probar-envio.ts",
+    "generar-ejemplos-email": "tsx scripts/generar-ejemplos-email.ts",
     "probar-validar-email": "tsx scripts/probar-validar-email.ts",
     "sync-contactos": "tsx scripts/sync-contactos.ts",
     "probar-sync-dryrun": "tsx scripts/probar-sync-dryrun.ts",

@@ -167,33 +167,24 @@ export function paginaContactosHtml(): string {
   );
 }
 
-const HTML_EJEMPLO = `<!DOCTYPE html>
-<html lang="es"><body style="margin:0;padding:0;background:#f4f7fb;font-family:Georgia,serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="padding:24px 0;"><tr><td align="center">
-<table width="600" style="max-width:600px;width:100%;background:#ffffff;border:1px solid #d5deea;">
-<tr><td style="padding:22px 28px;background:#14325c;color:#ffffff;font-size:28px;">Bodasesor</td></tr>
-<tr><td style="padding:20px 28px 8px;font-size:22px;color:#14325c;">Ideas para tu próxima publicación</td></tr>
-<tr><td style="padding:0 28px 24px;font-family:Arial,sans-serif;font-size:15px;line-height:1.6;color:#5b6b7c;">
-Comparte bastidores reales, un tip práctico y una historia corta de cliente.
-</td></tr>
-<tr><td style="padding:0 28px 28px;" align="center">
-<a href="https://bodasesor.com" style="background:#14325c;color:#fff;text-decoration:none;padding:12px 20px;border-radius:4px;font-family:Arial,sans-serif;">Ver guía</a>
-</td></tr>
-</table></td></tr></table></body></html>`;
-
 export function paginaPlantillasHtml(): string {
-  const ejemploEscapado = HTML_EJEMPLO
-    .replace(/\\/g, "\\\\")
-    .replace(/`/g, "\\`")
-    .replace(/\$/g, "\\$");
-
   return layout(
     "Plantillas",
     "plantillas",
     `<section class="card">
       <h2>Plantillas</h2>
-      <p class="lead">Edita el HTML, previsualízalo y guarda borrador local. Solo al aprobar se crea en Brevo (campaña en borrador, sin envío).</p>
+      <p class="lead">Emails promocionales Bodasesor (navy / cream / gold) listos para Brevo. Elige un tema, edita el HTML, guarda borrador y aprueba sin enviar.</p>
       <div class="row">
+        <label style="margin:0;font-weight:600;display:flex;gap:8px;align-items:center">
+          Tema
+          <select id="tema">
+            <option value="posadas">Posadas</option>
+            <option value="cancun">Cancún</option>
+            <option value="cdmx">Ciudad de México</option>
+            <option value="guadalajara">Guadalajara</option>
+          </select>
+        </label>
+        <button type="button" class="sec" id="btn-tema">Cargar tema</button>
         <button type="button" class="sec" id="btn-nuevo">Nuevo</button>
         <button type="button" class="sec" id="btn-guardar">Guardar borrador</button>
         <button type="button" id="btn-aprobar">Aprobar y enviar a Brevo</button>
@@ -203,8 +194,8 @@ export function paginaPlantillasHtml(): string {
       <div class="grid">
         <form id="form-plantilla">
           <input type="hidden" id="id"/>
-          <label>Nombre interno<input id="nombre" value="Newsletter Bodasesor" required/></label>
-          <label>Asunto<input id="asunto" value="Ideas para tu próxima publicación" required/></label>
+          <label>Nombre interno<input id="nombre" value="Newsletter Posadas" required/></label>
+          <label>Asunto<input id="asunto" value="Bodasesor · Posadas" required/></label>
           <label>Remitente nombre<input id="remNombre" value="Bodasesor" required/></label>
           <label>Remitente email<input id="remEmail" value="hola@bodasesor.com" required/></label>
           <label>listIds Brevo (ej. 21)<input id="listIds" placeholder="o usa BREVO_DEFAULT_LIST_IDS"/></label>
@@ -219,18 +210,37 @@ export function paginaPlantillasHtml(): string {
       <div id="lista"></div>
     </section>
     <script>
-      const HTML_EJEMPLO = \`${ejemploEscapado}\`;
       const htmlContent = document.getElementById('htmlContent');
       const preview = document.getElementById('preview');
       const msg = document.getElementById('msg');
       const estadoEl = document.getElementById('estado');
-      htmlContent.value = HTML_EJEMPLO;
       function refreshPreview(){ preview.srcdoc = htmlContent.value; }
       htmlContent.addEventListener('input', refreshPreview);
-      refreshPreview();
 
       function setMsg(ok, text){ msg.innerHTML = '<div class="' + (ok?'ok':'err') + '">' + escapeHtml(text) + '</div>'; }
       function escapeHtml(s){return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+      async function cargarTema(tema){
+        const res = await fetch('/api/plantillas/tema', {
+          method:'POST', headers:{'content-type':'application/json'},
+          body: JSON.stringify({ tema })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'No se pudo cargar el tema');
+        htmlContent.value = data.htmlContent;
+        document.getElementById('nombre').value = data.nombre || ('Newsletter ' + tema);
+        document.getElementById('asunto').value = data.asunto || '';
+        refreshPreview();
+        return data;
+      }
+
+      document.getElementById('btn-tema').onclick = async () => {
+        try {
+          const tema = document.getElementById('tema').value;
+          await cargarTema(tema);
+          setMsg(true, 'Tema «' + tema + '» cargado. Placeholders [[FOTO_HERO]], [[ENLACE_COTIZAR]], etc. listos para Brevo.');
+        } catch (err) { setMsg(false, err.message || String(err)); }
+      };
 
       async function cargarLista(){
         const res = await fetch('/api/borradores');
@@ -256,15 +266,14 @@ export function paginaPlantillasHtml(): string {
         });
       }
       cargarLista();
+      cargarTema('posadas').catch(err => setMsg(false, err.message || String(err)));
 
-      document.getElementById('btn-nuevo').onclick = () => {
+      document.getElementById('btn-nuevo').onclick = async () => {
         document.getElementById('id').value = '';
-        document.getElementById('nombre').value = 'Nueva plantilla';
-        document.getElementById('asunto').value = '';
-        htmlContent.value = HTML_EJEMPLO;
         estadoEl.textContent = 'estado: borrador';
-        refreshPreview();
         msg.innerHTML = '';
+        try { await cargarTema(document.getElementById('tema').value); }
+        catch (err) { setMsg(false, err.message || String(err)); }
       };
 
       document.getElementById('btn-guardar').onclick = async () => {
