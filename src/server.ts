@@ -16,7 +16,11 @@ import {
   rutaMediaSegura,
 } from "./gemini/generar-imagen.js";
 import { conectarAgentesSolicitados } from "./gemini/conectar.js";
-import { modeloTextoActivo, probeModelosGemini } from "./gemini/probe.js";
+import {
+  modeloImagenActivo,
+  modeloTextoActivo,
+  probeModelosGemini,
+} from "./gemini/probe.js";
 import { KommoClient } from "./kommo/cliente.js";
 import { sincronizarContactoKommo } from "./kommo/sincronizar.js";
 import {
@@ -321,9 +325,11 @@ const servidor = http.createServer((req, res) => {
           ultimaActualizacionIso: BUILD_ISO,
           modelos: {
             texto: modeloTextoActivo(),
-            imagenPredict: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
-            imagen:
-              process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image",
+            imagenPredict: modeloImagenActivo(),
+            imagenLlmFallback:
+              process.env.GEMINI_IMAGE_FALLBACK === "1"
+                ? process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image"
+                : null,
           },
           persistencia: rutasPersistencia(),
           integraciones: {
@@ -901,24 +907,21 @@ const servidor = http.createServer((req, res) => {
         enviarJson(res, 200, {
           total: modelos.length,
           textoPreferido: modeloTextoActivo(),
-          imagenPreferida: process.env.IMAGEN_MODEL ?? "imagen-3.0-generate-002",
+          imagenPreferida: modeloImagenActivo(),
           imagenLlmFallback:
             process.env.GEMINI_IMAGE_FALLBACK === "1"
               ? process.env.GEMINI_IMAGE_MODEL ?? "gemini-2.5-flash-image"
               : null,
-          flash20: modelos.filter((m) => m.name.includes("2.0-flash")),
           imagen: modelos.filter((m) => m.name.includes("imagen")),
           modelos: nombres,
-          detalle: modelos.filter(
-            (m) => m.name.includes("2.0-flash") || m.name.includes("imagen"),
-          ),
-          nota: "Solo se usan GEMINI_MODEL e IMAGEN_MODEL en generación. Fallback LLM de imagen requiere GEMINI_IMAGE_FALLBACK=1.",
+          detalle: modelos.filter((m) => m.name.includes("imagen")),
+          nota: "Texto: solo GEMINI_MODEL (flash-lite). Imagen: solo IMAGEN_MODEL vía predict. Nano Banana apagado salvo GEMINI_IMAGE_FALLBACK=1.",
         });
         return;
       }
 
       /**
-       * Conexión ligera a Flash 2.0 + Imagen 3 (GET model metadata).
+       * Conexión ligera a Flash-Lite + Imagen 4 (GET model metadata).
        * No genera copy ni imágenes.
        */
       if (method === "GET" && path === "/gemini/conectar") {

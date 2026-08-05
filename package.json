@@ -22,7 +22,8 @@
     "probar-sync-dryrun": "tsx scripts/probar-sync-dryrun.ts",
     "panel:dev": "npm --prefix panel run dev",
     "panel:build": "npm --prefix panel run build",
-    "panel:start": "npm --prefix panel run start"
+    "panel:start": "npm --prefix panel run start",
+    "probar-modelos-gemini": "tsx scripts/probar-modelos-gemini.ts"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

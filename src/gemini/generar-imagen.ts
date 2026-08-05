@@ -1,15 +1,18 @@
 /**
  * Generación de imágenes para emails.
- * 1) IMAGEN_MODEL (predict)
- * 2) Si falla, un solo fallback: GEMINI_IMAGE_MODEL (generateContent + IMAGE)
- *    — necesario cuando Imagen 3 no existe en la API key.
+ * ÚNICO camino: IMAGEN_MODEL vía :predict (default imagen-4.0-fast-generate-001).
+ * Nano Banana / generateContent IMAGE solo si GEMINI_IMAGE_FALLBACK=1 (apagado).
  */
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { mediaDirPersistente } from "../persistencia/rutas.js";
-import { candidatosImagenPredict } from "./probe.js";
+import {
+  candidatosImagenLlm,
+  candidatosImagenPredict,
+  modeloImagenActivo,
+} from "./probe.js";
 
 export interface GenerarImagenInput {
   prompt: string;
@@ -166,11 +169,6 @@ async function viaGenerateContentImage(
   );
 }
 
-/** Un solo modelo LLM de imagen (no cascada). */
-function modeloImagenLlm(): string {
-  return process.env.GEMINI_IMAGE_MODEL?.trim() || "gemini-2.5-flash-image";
-}
-
 export async function generarImagenEmail(
   input: GenerarImagenInput,
 ): Promise<ImagenGenerada> {
@@ -180,6 +178,7 @@ export async function generarImagenEmail(
   }
 
   const errores: string[] = [];
+  const pedido = modeloImagenActivo();
 
   for (const modelo of candidatosImagenPredict()) {
     try {
@@ -193,19 +192,23 @@ export async function generarImagenEmail(
     }
   }
 
-  const llm = modeloImagenLlm();
-  try {
-    const img = await viaGenerateContentImage(apiKey, llm, input);
-    if (img) {
-      return img;
+  // Nano Banana / LLM imagen: SOLO con flag explícito (apagado por defecto)
+  for (const llm of candidatosImagenLlm()) {
+    try {
+      const img = await viaGenerateContentImage(apiKey, llm, input);
+      if (img) {
+        return img;
+      }
+      errores.push(`${llm}: generateContent sin imagen`);
+    } catch (error: unknown) {
+      errores.push(error instanceof Error ? error.message : String(error));
     }
-    errores.push(`${llm}: generateContent sin imagen`);
-  } catch (error: unknown) {
-    errores.push(error instanceof Error ? error.message : String(error));
   }
 
   throw new Error(
-    `No se pudo generar imagen. Detalle: ${errores.slice(-3).join(" | ")}`,
+    `No se pudo generar imagen con ${pedido}. ` +
+      `Detalle: ${errores.slice(-3).join(" | ")}. ` +
+      `No se usa Nano Banana a menos que GEMINI_IMAGE_FALLBACK=1.`,
   );
 }
 

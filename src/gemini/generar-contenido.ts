@@ -143,8 +143,8 @@ ${EJEMPLO_HTML_EMAIL_OK}
       aspectRatio: "16:9",
       ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
     });
-    const pedidoImagen =
-      process.env.IMAGEN_MODEL?.trim() || "imagen-3.0-generate-002";
+    const { modeloImagenActivo } = await import("./probe.js");
+    const pedidoImagen = modeloImagenActivo();
     if (imagen.modelo !== pedidoImagen) {
       advertencias.push(
         `Se usó modelo de imagen ${imagen.modelo} (configurado: ${pedidoImagen}).`,

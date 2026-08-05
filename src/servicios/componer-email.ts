@@ -144,7 +144,9 @@ export async function componerEmail(input: ComposerInput): Promise<ComposerResul
 
   const destino = input.destino?.trim() || promo.destino;
   const textoMatch = `${briefAmpliado} ${promo.heroTitulo} ${promo.heroSubtitulo ?? ""}`;
-  const quiereGen = input.generarImagenes !== false;
+  // Solo genera imágenes si el usuario lo pidió explícitamente (checkbox).
+  // Default OFF para no disparar Imagen/Nano Banana en cada borrador.
+  const quiereGen = input.generarImagenes === true;
   const advertencias: string[] = [];
   let reutilizadas = 0;
   let generadas = 0;

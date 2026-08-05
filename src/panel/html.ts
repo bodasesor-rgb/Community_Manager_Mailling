@@ -766,8 +766,8 @@ export function paginaCrearHtml(): string {
             <div class="row">
               <button type="button" class="sec" id="btn-ideas">Ideas de temas (IA)</button>
               <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin:0">
-                <input type="checkbox" id="genImg" checked/>
-                Generar imágenes nuevas si no hay compatibles
+                <input type="checkbox" id="genImg"/>
+                Generar imágenes nuevas (Imagen 4; solo si lo marcas)
               </label>
             </div>
             <div id="ideas" class="ideas"></div>
