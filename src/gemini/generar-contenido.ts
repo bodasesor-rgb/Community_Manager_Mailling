@@ -6,7 +6,6 @@
 import type { GenerarPlantillaHtmlInput } from "../plantillas/generador.js";
 import {
   BLOQUE_AUTO_VERIFICACION_PROMPT,
-  EJEMPLO_HTML_EMAIL_OK,
 } from "../servicios/verificar-html-email.js";
 import { generarTextoGemini } from "./cliente-texto.js";
 import { generarImagenEmail, type ImagenGenerada } from "./generar-imagen.js";
@@ -48,63 +47,49 @@ export async function generarContenidoEmail(
   const quiereImagen = input.generarImagen === true;
 
   const contextoSitio = input.contextoSitio?.trim()
-    ? `\nConocimiento del sitio web (usa URLs reales cuando menciones productos, blog o redes):\n"""\n${input.contextoSitio.trim().slice(0, 6000)}\n"""\n`
+    ? `\nConocimiento del sitio (URLs reales):\n"""\n${input.contextoSitio.trim().slice(0, 2800)}\n"""\n`
     : "";
   const reglasFijas = input.reglas?.trim()
-    ? `\nREGLAS PERMANENTES DE ESTRUCTURA (obligatorias):\n"""\n${input.reglas.trim().slice(0, 4000)}\n"""\n`
+    ? `\nREGLAS DE ESTRUCTURA (obligatorias; el HTML lo arma otro módulo):\n"""\n${input.reglas.trim().slice(0, 1800)}\n"""\n`
     : "";
 
   const prompt = `Eres copywriter de emails promocionales para "${marca}" (bodas y eventos en México).
 Idioma: ${idioma}. Tono: ${tono}, cálido y elegante (sin emojis).
 
-El usuario escribió INSTRUCCIONES EN LENGUAJE NATURAL (no HTML). Tú las conviertes en el contenido estructurado del email; otro módulo arma el HTML de la plantilla.
-Instrucciones del usuario:
+El usuario escribió INSTRUCCIONES EN LENGUAJE NATURAL. Tú solo devuelves TEXTOS en JSON; otro módulo arma el HTML.
+Instrucciones:
 """
 ${input.brief}
 """
 ${reglasFijas}${contextoSitio}
-Devuelve SOLO un JSON válido (sin markdown) con esta forma exacta:
+Devuelve SOLO JSON válido:
 {
-  "asunto": "asunto del email derivado del brief (máx 60 caracteres, atractivo, sin emojis)",
+  "asunto": "máx 60 caracteres, sin emojis",
   "marca": "${marca}",
-  "titular": "titular hero corto",
-  "apoyo": "subtítulo hero corto",
-  "destino": "ciudad o tema principal",
-  "saludo": "2-3 frases. Debe incluir exactamente {{ contact.FIRSTNAME }} al inicio",
+  "titular": "titular corto",
+  "apoyo": "subtítulo corto",
+  "destino": "ciudad o tema",
+  "saludo": "2-3 frases con {{ contact.FIRSTNAME }} al inicio",
   "ctaTexto": "Cotiza por WhatsApp",
   "productos": [
-    { "titulo": "servicio 1", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
-    { "titulo": "servicio 2", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
-    { "titulo": "servicio 3", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
-    { "titulo": "servicio 4", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
-    { "titulo": "servicio 5", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
-    { "titulo": "servicio 6", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
-    { "titulo": "servicio 7", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." },
-    { "titulo": "servicio 8", "descripcion": "1 frase corta", "url": "https://bodasesor.com/..." }
+    { "titulo": "servicio", "descripcion": "1 frase", "url": "https://bodasesor.com/..." }
   ],
-  "urgencia": "frase corta que mencione el código MAILING5 (5% descuento)",
-  "pie": "texto legal corto de comunidad",
-  "imagePrompt": "English visual prompt for a tasteful wedding/event hero photo, no text in the image"
+  "urgencia": "frase con código MAILING5 (5% descuento)",
+  "pie": "texto legal corto",
+  "imagePrompt": "English photo prompt, no text in image"
 }
+Incluye exactamente 8 productos en el array (el sistema los reemplaza por catálogo real).
 
 Reglas:
-- La ESTRUCTURA del HTML (navbar, logo, blog, 8 productos, código MAILING5) la arma otro módulo; tú solo escribes textos.
-- Interpreta el brief como pedidos en palabras normales (qué contar, a quién, qué ofrecer).
-- El campo "asunto" DEBE resumir las instrucciones del usuario (destino, oferta, descuento). No uses un asunto genérico.
-- En "productos" puedes listar 8 nombres del catálogo, pero el sistema los reemplazará por URLs reales.
-- Sin emojis. No inventes dominios raros: solo bodasesor.com.
-- Mantén {{ contact.FIRSTNAME }} literal en el saludo (espaciado exacto).
-- Menciona MAILING5 (5% descuento) en urgencia o saludo.
-- El CTA debe ser exactamente «Cotiza por WhatsApp» (nunca «Agendar llamada»).
-- Si usas placeholders en textos/URLs, SOLO de la lista: [[LOGO]], [[FOTO_HERO]], [[ENLACE_COTIZAR]], [[ENLACE_BLOG]], [[ENLACE_FACEBOOK]], [[ENLACE_INSTAGRAM]], [[ENLACE_WHATSAPP]], [[FOTO_PRODUCTO_1]]…[[FOTO_PRODUCTO_12]].
+- Solo textos; no generes HTML.
+- Asunto derivado del brief (destino/oferta).
+- Sin emojis. Solo URLs bodasesor.com.
+- {{ contact.FIRSTNAME }} literal en el saludo.
+- CTA exacto: «Cotiza por WhatsApp».
+- Menciona MAILING5 (5%) en urgencia o saludo.
 - imagePrompt en inglés, fotográfico.
 
-${BLOQUE_AUTO_VERIFICACION_PROMPT}
-
-Ejemplo de correo HTML bien formado (referencia; TÚ NO generas HTML, solo JSON de textos que permitan este resultado):
-\`\`\`
-${EJEMPLO_HTML_EMAIL_OK}
-\`\`\``;
+${BLOQUE_AUTO_VERIFICACION_PROMPT}`;
 
   const { modelo, texto } = await generarTextoGemini({
     prompt,

@@ -48,23 +48,20 @@ export class HtmlEmailInvalidoError extends Error {
 }
 
 /**
- * Texto de auto-verificación para prompts (Capa 1).
- * El modelo debe aplicarlo mentalmente antes de responder.
+ * Texto de auto-verificación para prompts de COPY (Capa 1).
+ * El HTML lo arma el sistema; el modelo solo entrega JSON de textos.
  */
 export const BLOQUE_AUTO_VERIFICACION_PROMPT = `
-ANTES DE RESPONDER, VERIFICA (si algo falla, corrígelo antes de entregar):
-□ ¿Mi respuesta empieza con <!DOCTYPE o <table y NO tiene \`\`\`html ni texto extra?
-□ ¿Toda la estructura usa <table>? (ningún <div> con flexbox/grid)
-□ ¿Usé {{ contact.FIRSTNAME }} y {{ unsubscribe }} EXACTOS, y los [[ ]] solo de la lista permitida?
-□ ¿El footer incluye <a href="{{ unsubscribe }}">?
-□ ¿Toda <img> tiene alt?
-Si alguna casilla falla, arréglala. Solo entonces entrega el HTML.
-
-Placeholders [[ ]] permitidos: [[LOGO]], [[FOTO_HERO]], [[ENLACE_COTIZAR]], [[ENLACE_BLOG]], [[ENLACE_FACEBOOK]], [[ENLACE_INSTAGRAM]], [[ENLACE_WHATSAPP]], [[FOTO_PRODUCTO_1]]…[[FOTO_PRODUCTO_12]].
-Variables Brevo literales obligatorias: {{ contact.FIRSTNAME }}, {{ unsubscribe }}.
+ANTES DE RESPONDER, VERIFICA:
+□ ¿Respondí SOLO JSON válido (sin markdown ni HTML)?
+□ ¿El saludo incluye exactamente {{ contact.FIRSTNAME }}?
+□ ¿ctaTexto es exactamente «Cotiza por WhatsApp»?
+□ ¿Hay 8 productos y se menciona MAILING5 / 5%?
+□ ¿Sin emojis y sin URLs fuera de bodasesor.com?
+Si algo falla, corrígelo antes de entregar.
 `.trim();
 
-/** Ejemplo mínimo bien formado (referencia Capa 1). */
+/** Ejemplo mínimo bien formado (referencia interna / tests; no inyectar en prompts). */
 export const EJEMPLO_HTML_EMAIL_OK = `<!DOCTYPE html>
 <html lang="es">
 <head>

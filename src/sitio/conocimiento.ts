@@ -430,22 +430,18 @@ export async function sincronizarDesdeSitemap(
 
 /** Texto compacto para inyectar en prompts de Gemini. */
 export function conocimientoParaPrompt(c: SitioConocimiento): string {
-  const menus = (c.menus ?? [])
-    .slice(0, 30)
-    .map((m) => `- ${m.nombre} (${m.hijos} urls): ${m.url}`)
-    .join("\n");
   const productos = c.productos
-    .slice(0, 40)
+    .slice(0, 16)
     .map(
       (p) =>
-        `- ${p.nombre}: ${p.url}${p.descripcion ? ` — ${p.descripcion.slice(0, 100)}` : ""}`,
+        `- ${p.nombre}: ${p.url}${p.descripcion ? ` — ${p.descripcion.slice(0, 80)}` : ""}`,
     )
     .join("\n");
   const blog = c.articulosBlog
-    .slice(0, 15)
+    .slice(0, 8)
     .map(
       (a) =>
-        `- ${a.titulo}: ${a.url}${a.extracto ? ` — ${a.extracto.slice(0, 80)}` : ""}`,
+        `- ${a.titulo}: ${a.url}${a.extracto ? ` — ${a.extracto.slice(0, 60)}` : ""}`,
     )
     .join("\n");
   const redes = [
@@ -459,18 +455,16 @@ export function conocimientoParaPrompt(c: SitioConocimiento): string {
 
   return `Marca: Bodasesor
 Sitio: ${c.baseUrl}
-Resumen: ${c.resumen}
-Inventario: ${c.productos.length} productos/servicios, ${c.articulosBlog.length} blogs, ${(c.menus ?? []).length} menús, ${c.sitemapTotalUrls ?? "?"} URLs sitemap.
+Resumen: ${c.resumen.slice(0, 400)}
+Inventario: ${c.productos.length} productos, ${c.articulosBlog.length} blogs.
 Cotizar: ${c.cotizarUrl || c.redes.whatsapp || c.baseUrl}
 Blog: ${c.blogUrl}
-Ciudades (muestra): ${c.ciudades.slice(0, 15).join(", ") || "todo México"}
+Ciudades: ${c.ciudades.slice(0, 10).join(", ") || "todo México"}
 Redes:
-${redes || "(pendiente Instagram/Facebook en panel)"}
-Menús principales:
-${menus || "(inspecciona el sitio)"}
-Productos/servicios (muestra; hay ${c.productos.length} en total):
+${redes || "(pendiente en panel)"}
+Productos (muestra):
 ${productos}
-Artículos de blog (muestra; hay ${c.articulosBlog.length} en total):
+Blog (muestra):
 ${blog || "(inspecciona el sitio)"}`;
 }
 
